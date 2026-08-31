@@ -3,6 +3,9 @@ commands:
   diff-check:
     argv: ["git", "diff", "--check", "HEAD", "--"]
     cwd: "."
+  core-test:
+    argv: ["node", "--test"]
+    cwd: "packages/core"
 evaluators:
   - id: patch-integrity
     provider_id: process.harness
@@ -10,7 +13,7 @@ evaluators:
     criterion_ids: [patch-is-well-formed]
 rules: []
 paths:
-  writable: ["README.md", "docs/**", "decisions/**", "schemas/**"]
+  writable: ["README.md", "docs/**", "package.json", "tsconfig.json", "packages/core/**"]
   protected: [".git/**", ".fleet/**", ".env*", ".github/workflows/**"]
   generated: []
 verification:
