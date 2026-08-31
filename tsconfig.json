@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "packages/core/src/**/*.ts",
+    "packages/depth-webgpu/src/**/*.ts",
+    "packages/depth-webxr/src/**/*.ts",
+    "packages/motion/src/**/*.ts",
+    "packages/three/src/**/*.ts",
+    "packages/babylon/src/**/*.ts"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "web-ar-occlusion",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/depth-webgpu",
+    "packages/depth-webxr",
+    "packages/motion",
+    "packages/three",
+    "packages/babylon"
+  ],
+  "scripts": {
+    "check": "node --check packages/core/src/index.ts && node --check packages/depth-webgpu/src/index.ts && node --check packages/depth-webxr/src/index.ts && node --check packages/motion/src/index.ts && node --check packages/three/src/index.ts && node --check packages/babylon/src/index.ts"
+  }
+}
