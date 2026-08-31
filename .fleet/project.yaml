@@ -13,7 +13,7 @@ evaluators:
     criterion_ids: [patch-is-well-formed]
 rules: []
 paths:
-  writable: ["README.md", "docs/**", "package.json", "tsconfig.json", "packages/core/**"]
+  writable: ["README.md", "docs/**", "package.json", "tsconfig.json", "packages/core/**", "packages/depth-webgpu/**", "packages/depth-webxr/**", "packages/motion/**", "packages/three/**", "packages/babylon/**"]
   protected: [".git/**", ".fleet/**", ".env*", ".github/workflows/**"]
   generated: []
 verification:
