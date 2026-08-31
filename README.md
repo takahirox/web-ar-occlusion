@@ -32,3 +32,33 @@ Optical flow and segmentation are off by default and may be adopted only through
 ## Scope
 
 The documentation freezes the implementation target. The current foundation adds no model choice, external dependency, invented metric calibration, benchmark claim, or production API beyond the contracts in the specification.
+
+## Synthetic browser diagnostic
+
+The repository includes a dependency-free diagnostic vertical slice. It overlays a shaded WebGPU sphere on a live camera preview and applies a deterministic fake foreground-depth boundary. It is intentionally separate from the unfinished production engine.
+
+Requirements:
+
+- a current Chrome or Safari build with WebGPU enabled and a compatible GPU;
+- camera permission; and
+- a secure context. The default `http://127.0.0.1` loopback URL is treated as trustworthy by browsers. For another device, serve the demo through HTTPS rather than changing the server's loopback binding.
+
+Run it from the repository root:
+
+```sh
+npm run demo
+```
+
+Open `http://127.0.0.1:4173/`, then select **Start camera**. Camera permission is not requested before that click. To choose another valid port, use `npm run demo -- --port 5000` or set `PORT=5000`.
+
+Stop the server with `Ctrl-C`. The server also shuts down cleanly on `SIGTERM`. Stop the camera independently with the demo's **Stop camera** control.
+
+Run its dependency-free tests with:
+
+```sh
+npm run demo:test
+```
+
+All camera frames stay in the browser. The demo has no CDN, remote assets, model downloads, service worker, or other network requests.
+
+The displayed provider, depth boundary, inference cadence, and depth values are deterministic synthetic data. They do not exercise real depth inference, full core-engine integration, visual accuracy, or benchmark performance. Display FPS and synthetic update rate are simple diagnostic counters; the demo does not fabricate or report measured GPU timings or real depth.

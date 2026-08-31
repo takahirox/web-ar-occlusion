@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='24' fill='%2364e2bc'/%3E%3C/svg%3E">
+  <title>Synthetic WebGPU Occlusion Diagnostic</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">WEB AR OCCLUSION · DIAGNOSTIC</p>
+        <h1>Synthetic depth, visible behavior.</h1>
+        <p class="lede">A dependency-free vertical slice for checking camera lifecycle, WebGPU compositing, and display/inference cadence separation.</p>
+      </div>
+      <span class="badge">DETERMINISTIC SYNTHETIC PROVIDER</span>
+    </header>
+
+    <section class="stage-card" aria-label="Camera and WebGPU preview">
+      <div class="stage" id="stage">
+        <video id="camera" autoplay muted playsinline></video>
+        <canvas id="gpu" aria-label="Transparent WebGPU virtual content overlay"></canvas>
+        <div class="start-screen" id="startScreen">
+          <div class="capability-icon" aria-hidden="true">◉</div>
+          <h2>Camera stays off until you start it</h2>
+          <p>This check requires a secure context, camera permission, and WebGPU. Frames remain on this device; the demo makes no network requests.</p>
+          <button class="primary" id="start" type="button">Start camera</button>
+        </div>
+        <div class="status-pill" id="status">Idle · camera off</div>
+      </div>
+
+      <div class="controls">
+        <fieldset>
+          <legend>View</legend>
+          <div class="segmented" id="viewControls">
+            <button type="button" data-view="occlusion" aria-pressed="true">Occlusion</button>
+            <button type="button" data-view="none" aria-pressed="false">No occlusion</button>
+            <button type="button" data-view="mask" aria-pressed="false">Mask view</button>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Requested profile</legend>
+          <div class="segmented profiles" id="profileControls">
+            <button type="button" data-profile="performance" aria-pressed="false"><b>Performance</b><small>8 Hz · 320×192 · max age 250 ms</small></button>
+            <button type="button" data-profile="balanced" aria-pressed="true"><b>Balanced</b><small>12 Hz · 384×224 · max age 250 ms</small></button>
+            <button type="button" data-profile="quality" aria-pressed="false"><b>Quality</b><small>18 Hz · 480×270 · max age 200 ms</small></button>
+          </div>
+        </fieldset>
+        <button class="secondary" id="stop" type="button" disabled>Stop camera</button>
+      </div>
+    </section>
+
+    <section class="telemetry" aria-labelledby="telemetry-title">
+      <div class="panel-heading">
+        <div><p class="eyebrow">LIVE TELEMETRY</p><h2 id="telemetry-title">Diagnostic state</h2></div>
+        <span class="live-dot">LOCAL ONLY</span>
+      </div>
+      <dl>
+        <div><dt>Provider</dt><dd id="provider">deterministic-synthetic</dd></div>
+        <div><dt>Requested / active</dt><dd id="profiles">balanced / balanced</dd></div>
+        <div><dt>Display FPS</dt><dd id="fps">—</dd></div>
+        <div><dt>Synthetic inference</dt><dd id="inference">0 · 0.0 Hz</dd></div>
+        <div><dt>Depth age</dt><dd id="depthAge">—</dd></div>
+        <div><dt>Camera</dt><dd id="cameraSize">off</dd></div>
+        <div><dt>View mode</dt><dd id="viewMode">occlusion</dd></div>
+        <div><dt>Lifecycle</dt><dd id="lifecycle">idle</dd></div>
+      </dl>
+    </section>
+
+    <aside class="notice">
+      <b>Synthetic data — not benchmark evidence.</b>
+      The foreground boundary and metric-depth values are deterministic fake data. This demo does not exercise real inference, full core-engine integration, visual accuracy, or benchmark performance. It reports no measured GPU timing and produces no real depth.
+    </aside>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

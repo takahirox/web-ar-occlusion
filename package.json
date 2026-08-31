@@ -12,6 +12,8 @@
   ],
   "scripts": {
     "test": "node --test packages/core/test/*.test.ts",
-    "check": "node --check packages/core/src/index.ts && node --check packages/depth-webgpu/src/index.ts && node --check packages/depth-webxr/src/index.ts && node --check packages/motion/src/index.ts && node --check packages/three/src/index.ts && node --check packages/babylon/src/index.ts"
+    "demo": "node scripts/serve-demo.mjs",
+    "demo:test": "node --test apps/demo/test/*.test.mjs",
+    "check": "node --check packages/core/src/index.ts && node --check packages/depth-webgpu/src/index.ts && node --check packages/depth-webxr/src/index.ts && node --check packages/motion/src/index.ts && node --check packages/three/src/index.ts && node --check packages/babylon/src/index.ts && node --check apps/demo/main.js && node --check scripts/serve-demo.mjs"
   }
 }
