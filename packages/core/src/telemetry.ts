@@ -314,6 +314,7 @@ export function isTelemetryEnvelope(value: unknown): value is TelemetryEnvelope 
     value.schemaVersion === TELEMETRY_SCHEMA_VERSION &&
     contains(TELEMETRY_EVENT_TYPES, value.eventType) &&
     typeof value.engineInstanceId === "string" &&
+    value.engineInstanceId.length > 0 &&
     Number.isFinite(value.displayTimestamp) &&
     (value.displayTimestamp as number) >= 0 &&
     sourceFrameIdIsValid &&
