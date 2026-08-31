@@ -66,6 +66,8 @@ interface ActiveCapture extends CapturedDepthFrame {
 }
 
 export class LatestDepthScheduler {
+  private readonly provider: DepthProvider;
+  private readonly options: LatestDepthSchedulerOptions;
   private status: LatestDepthSchedulerStatus = "running";
   private generation = 0;
   private active: ActiveCapture | null = null;
@@ -73,9 +75,12 @@ export class LatestDepthScheduler {
   private published: DepthFrame | null = null;
 
   public constructor(
-    private readonly provider: DepthProvider,
-    private readonly options: LatestDepthSchedulerOptions = {},
-  ) {}
+    provider: DepthProvider,
+    options: LatestDepthSchedulerOptions = {},
+  ) {
+    this.provider = provider;
+    this.options = options;
+  }
 
   public get state(): LatestDepthSchedulerState {
     return {
