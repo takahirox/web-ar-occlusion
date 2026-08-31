@@ -8,6 +8,7 @@ The contracts, architecture, defaults, control rules, validation protocol, and a
 
 - [MVP specification](docs/mvp-spec.md)
 - [Validation protocol](docs/validation.md)
+- [Issue #1 completion addendum](docs/issue-1-completion.md)
 - [Issue and checklist traceability](docs/traceability.md)
 
 Implementation and real-device measurement remain future work. Every numeric value in these documents is an initial hypothesis until evidence from the reference devices exists; no value is presented as a measured result.

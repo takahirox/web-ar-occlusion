@@ -31,6 +31,7 @@ The issue body and its authoritative follow-up refinement are represented by the
 | Segmentation experiment/adoption rule | `mvp-spec.md` §12; `validation.md` §8 | Gate finalized; experiment future |
 | Explicit non-goals | `mvp-spec.md` §13 | Scope finalized |
 | Evidence status and no benchmark claims | `mvp-spec.md` §§11, 14; `validation.md` §9 | Status finalized; real-device evidence future |
+| Target platforms, provider interfaces, calibration forms, exact output, packages, full non-goals, prototype, and five named scenarios | `issue-1-completion.md` §§1–10 | Omitted Issue-body details finalized; implementation/evidence future |
 
 ## Pre-implementation checklist traceability
 
