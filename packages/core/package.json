@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "sideEffects": false,
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",

@@ -1,4 +1,4 @@
-import type { CalibrationState, DepthFrame } from "./contracts.js";
+import type { CalibrationState, DepthFrame } from "./contracts.ts";
 
 export type DepthFrameGuardReason =
   | "invalid-frame"

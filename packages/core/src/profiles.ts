@@ -1,4 +1,4 @@
-import type { QualityProfile, QualityProfileName } from "./contracts.js";
+import type { QualityProfile, QualityProfileName } from "./contracts.ts";
 
 export const QUALITY_PROFILES: Readonly<
   Record<QualityProfileName, QualityProfile>

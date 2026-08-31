@@ -1,3 +1,3 @@
-export * from "./contracts.js";
-export * from "./guards.js";
-export * from "./profiles.js";
+export * from "./contracts.ts";
+export * from "./guards.ts";
+export * from "./profiles.ts";
