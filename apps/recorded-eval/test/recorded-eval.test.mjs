@@ -143,6 +143,7 @@ test('browser source pins the production runtime and exposes only completed auto
   assert.match(source, /revision: module\.DEPTH_MODEL_REVISION/);
   assert.match(source, /device: 'webgpu'/);
   assert.match(source, /dtype: module\.DEPTH_MODEL_DTYPE/);
+  assert.match(source, /rgb-guided-lower-median:r2:rgb-euclidean24/);
   assert.match(source, /globalThis\.__recordedEvalResult = result/);
   assert.match(source, /Development observation only; no benchmark result/);
 });

@@ -81,6 +81,48 @@ export function nearestResample(values, sourceWidth, sourceHeight, targetWidth, 
   return output;
 }
 
+const RGB_GUIDED_MEDIAN_RADIUS = 2;
+const RGB_GUIDED_MEDIAN_DISTANCE = 24;
+const RGB_GUIDED_MEDIAN_DISTANCE_SQUARED = RGB_GUIDED_MEDIAN_DISTANCE ** 2;
+
+export function rgbGuidedMedian5x5(values, rgba, width, height) {
+  if (!dimension(width) || !dimension(height) || values?.length !== width * height
+      || rgba?.length !== width * height * 4) {
+    throw new TypeError('invalid RGB-guided median dimensions');
+  }
+  const output = new Float32Array(values.length);
+  const candidates = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      candidates.length = 0;
+      const pixelIndex = y * width + x;
+      const centerOffset = pixelIndex * 4;
+      const centerRed = rgba[centerOffset];
+      const centerGreen = rgba[centerOffset + 1];
+      const centerBlue = rgba[centerOffset + 2];
+      const minimumY = Math.max(0, y - RGB_GUIDED_MEDIAN_RADIUS);
+      const maximumY = Math.min(height - 1, y + RGB_GUIDED_MEDIAN_RADIUS);
+      const minimumX = Math.max(0, x - RGB_GUIDED_MEDIAN_RADIUS);
+      const maximumX = Math.min(width - 1, x + RGB_GUIDED_MEDIAN_RADIUS);
+      for (let neighborY = minimumY; neighborY <= maximumY; neighborY += 1) {
+        for (let neighborX = minimumX; neighborX <= maximumX; neighborX += 1) {
+          const neighborIndex = neighborY * width + neighborX;
+          const neighborOffset = neighborIndex * 4;
+          const redDelta = rgba[neighborOffset] - centerRed;
+          const greenDelta = rgba[neighborOffset + 1] - centerGreen;
+          const blueDelta = rgba[neighborOffset + 2] - centerBlue;
+          if (redDelta ** 2 + greenDelta ** 2 + blueDelta ** 2 <= RGB_GUIDED_MEDIAN_DISTANCE_SQUARED) {
+            candidates.push(values[neighborIndex]);
+          }
+        }
+      }
+      candidates.sort((left, right) => left - right);
+      output[pixelIndex] = candidates[(candidates.length - 1) >> 1];
+    }
+  }
+  return output;
+}
+
 export function createPredictionDocument(frames, implementationId, evaluatedAt = new Date().toISOString()) {
   requiredString(implementationId, 'implementationId');
   if (!Array.isArray(frames) || frames.length === 0) throw new TypeError('at least one prediction frame is required');
@@ -197,7 +239,7 @@ async function run() {
   try {
     if (!navigator.gpu) throw new Error('WebGPU is unavailable');
     const module = await import('/depth-webgpu.js');
-    const implementationId = `transformers.js@${module.TRANSFORMERS_JS_VERSION}:${module.DEPTH_MODEL_ID}@${module.DEPTH_MODEL_REVISION}:webgpu:${module.DEPTH_MODEL_DTYPE}`;
+    const implementationId = `transformers.js@${module.TRANSFORMERS_JS_VERSION}:${module.DEPTH_MODEL_ID}@${module.DEPTH_MODEL_REVISION}:webgpu:${module.DEPTH_MODEL_DTYPE}:rgb-guided-lower-median:r2:rgb-euclidean24`;
     document.querySelector('#runtime').textContent = `Pinned model ${module.DEPTH_MODEL_ID} · revision ${module.DEPTH_MODEL_REVISION} · Transformers.js ${module.TRANSFORMERS_JS_VERSION} · WebGPU · ${module.DEPTH_MODEL_DTYPE}`;
     const corpus = await fetchCorpus(controller.signal);
     runtime = module.createTransformersDepthRuntime();
@@ -216,7 +258,8 @@ async function run() {
       const capture = await captureRgb(frame, controller.signal);
       setStatus(`Frame ${index + 1}/${corpus.length}: inferring ${frame.sourceFrameId}…`);
       const raw = validateModelDepth(await estimator.infer({ data: capture.pixels, width: capture.width, height: capture.height }, { signal: controller.signal }));
-      const values = nearestResample(raw.values, raw.width, raw.height, capture.width, capture.height);
+      const resampled = nearestResample(raw.values, raw.width, raw.height, capture.width, capture.height);
+      const values = rgbGuidedMedian5x5(resampled, capture.pixels, capture.width, capture.height);
       const resolvedFrame = { ...frame, width: capture.width, height: capture.height };
       addPreview(resolvedFrame, capture.image, values);
       predictions.push({ sourceFrameId: frame.sourceFrameId, width: capture.width, height: capture.height, relativeInverseDepth: values });
