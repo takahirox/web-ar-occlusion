@@ -5,11 +5,34 @@ import {
   DEPTH_MODEL_ID,
   DEPTH_MODEL_REVISION,
   DEPTH_MODEL_DTYPE,
+  METRIC_DEPTH_IMAGENET_MEAN,
+  METRIC_DEPTH_IMAGENET_STD,
+  METRIC_DEPTH_INPUT_DTYPE,
+  METRIC_DEPTH_INPUT_NAME,
+  METRIC_DEPTH_INPUT_SHAPE,
+  METRIC_DEPTH_INPUT_SIZE,
+  METRIC_DEPTH_MODEL_FAMILY,
+  METRIC_DEPTH_MODEL_FILENAME,
+  METRIC_DEPTH_MODEL_ID,
+  METRIC_DEPTH_MODEL_LICENSE,
+  METRIC_DEPTH_MODEL_REVISION,
+  METRIC_DEPTH_MODEL_SHA256,
+  METRIC_DEPTH_MODEL_SIZE_BYTES,
+  METRIC_DEPTH_MODEL_URL,
+  METRIC_DEPTH_OUTPUT_MAX_METERS,
+  METRIC_DEPTH_OUTPUT_MIN_METERS,
+  METRIC_DEPTH_OUTPUT_NAME,
+  METRIC_DEPTH_OUTPUT_ORIENTATION,
+  METRIC_DEPTH_OUTPUT_SHAPE,
+  METRIC_DEPTH_OUTPUT_UNIT,
+  ONNX_RUNTIME_WEBGPU_ESM_URL,
+  ONNX_RUNTIME_WEB_VERSION,
   RELATIVE_DEPTH_ORIENTATION,
   TRANSFORMERS_JS_ESM_URL,
   TRANSFORMERS_JS_VERSION,
   WebGPUMonocularDepthProvider,
   captureVideoFrame,
+  normalizeMetricRgbaToNchw,
   normalizeRelativeDepth,
   preserveRawNearIsLargerDepth,
 } from "../src/index.ts";
@@ -122,6 +145,71 @@ test("pins the browser runtime and model revision", () => {
   );
   assert.equal(DEPTH_MODEL_DTYPE, "q4");
   assert.equal(RELATIVE_DEPTH_ORIENTATION, "near-is-one");
+});
+
+test("pins the verified native metric runtime and model provenance", () => {
+  assert.equal(ONNX_RUNTIME_WEB_VERSION, "1.29.0");
+  assert.equal(
+    ONNX_RUNTIME_WEBGPU_ESM_URL,
+    "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.bundle.min.mjs",
+  );
+  assert.equal(METRIC_DEPTH_MODEL_ID, "77ukhtar/depth-anything-v2-metric-onnx");
+  assert.equal(METRIC_DEPTH_MODEL_REVISION, "a4259a3c45137b6eb32c84fcd95b86cd54c255b9");
+  assert.equal(METRIC_DEPTH_MODEL_FILENAME, "model.onnx");
+  assert.equal(METRIC_DEPTH_MODEL_URL, `https://huggingface.co/${METRIC_DEPTH_MODEL_ID}/resolve/${METRIC_DEPTH_MODEL_REVISION}/${METRIC_DEPTH_MODEL_FILENAME}`);
+  assert.equal(METRIC_DEPTH_MODEL_SHA256, "badcaa28c923da4b0bfaa370ed709acfa00e9f743d295d5443e2149a383413c9");
+  assert.equal(METRIC_DEPTH_MODEL_SIZE_BYTES, 98_941_181);
+  assert.equal(METRIC_DEPTH_MODEL_LICENSE, "Apache-2.0");
+  assert.equal(METRIC_DEPTH_MODEL_FAMILY, "Depth Anything V2 Metric Hypersim Small");
+  assert.equal(METRIC_DEPTH_INPUT_NAME, "pixel_values");
+  assert.deepEqual(METRIC_DEPTH_INPUT_SHAPE, [1, 3, 518, 518]);
+  assert.equal(METRIC_DEPTH_INPUT_DTYPE, "float32");
+  assert.equal(METRIC_DEPTH_INPUT_SIZE, 518);
+  assert.equal(METRIC_DEPTH_OUTPUT_NAME, "predicted_depth");
+  assert.deepEqual(METRIC_DEPTH_OUTPUT_SHAPE, [1, 518, 518]);
+  assert.equal(METRIC_DEPTH_OUTPUT_UNIT, "meter");
+  assert.equal(METRIC_DEPTH_OUTPUT_MIN_METERS, 0);
+  assert.equal(METRIC_DEPTH_OUTPUT_MAX_METERS, 20);
+  assert.equal(METRIC_DEPTH_OUTPUT_ORIENTATION, "far-is-larger");
+  assert.deepEqual(METRIC_DEPTH_IMAGENET_MEAN, [0.485, 0.456, 0.406]);
+  assert.deepEqual(METRIC_DEPTH_IMAGENET_STD, [0.229, 0.224, 0.225]);
+  assert.doesNotMatch(METRIC_DEPTH_MODEL_URL, /resolve\/main|pstic\/spatialthings/);
+});
+
+test("normalizes 518x518 RGBA pixels into planar ImageNet NCHW", () => {
+  const planeSize = METRIC_DEPTH_INPUT_SIZE ** 2;
+  const rgba = new Uint8ClampedArray(planeSize * 4);
+  const pixel = planeSize - 1;
+  rgba.set([255, 128, 0, 17], pixel * 4);
+  const before = rgba.slice(pixel * 4, pixel * 4 + 4);
+
+  const output = normalizeMetricRgbaToNchw(
+    rgba,
+    METRIC_DEPTH_INPUT_SIZE,
+    METRIC_DEPTH_INPUT_SIZE,
+  );
+
+  assert.ok(output instanceof Float32Array);
+  assert.equal(output.length, 3 * planeSize);
+  assert.ok(Math.abs(output[pixel] - ((255 / 255 - 0.485) / 0.229)) < 1e-6);
+  assert.ok(Math.abs(output[planeSize + pixel] - ((128 / 255 - 0.456) / 0.224)) < 1e-6);
+  assert.ok(Math.abs(output[2 * planeSize + pixel] - ((0 / 255 - 0.406) / 0.225)) < 1e-6);
+  assert.deepEqual(rgba.slice(pixel * 4, pixel * 4 + 4), before);
+
+  rgba[pixel * 4 + 3] = 255;
+  const alphaChanged = normalizeMetricRgbaToNchw(rgba, 518, 518);
+  assert.equal(alphaChanged[pixel], output[pixel]);
+  assert.equal(alphaChanged[planeSize + pixel], output[planeSize + pixel]);
+  assert.equal(alphaChanged[2 * planeSize + pixel], output[2 * planeSize + pixel]);
+});
+
+test("rejects non-518 RGBA metric inputs", () => {
+  const message = /exactly 518x518 RGBA pixels/;
+  const rgba = new Uint8ClampedArray(518 * 518 * 4);
+  assert.throws(() => normalizeMetricRgbaToNchw(rgba, 517, 518), message);
+  assert.throws(() => normalizeMetricRgbaToNchw(rgba, 518, 517), message);
+  assert.throws(() => normalizeMetricRgbaToNchw(rgba.subarray(1), 518, 518), message);
+  assert.throws(() => normalizeMetricRgbaToNchw(new Uint8Array(rgba.length), 518, 518), message);
 });
 
 test("normalizes only finite depth with an explicit near/far orientation", () => {

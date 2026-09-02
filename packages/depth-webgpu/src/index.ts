@@ -6,6 +6,34 @@ export const DEPTH_MODEL_REVISION =
   "4472b7362082ad9968fee890ca0f1e5aca36b93d";
 export const DEPTH_MODEL_DTYPE = "q4";
 export const RELATIVE_DEPTH_ORIENTATION = "near-is-one";
+export const ONNX_RUNTIME_WEB_VERSION = "1.29.0";
+export const ONNX_RUNTIME_WEBGPU_ESM_URL =
+  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.bundle.min.mjs";
+export const METRIC_DEPTH_MODEL_ID =
+  "77ukhtar/depth-anything-v2-metric-onnx";
+export const METRIC_DEPTH_MODEL_REVISION =
+  "a4259a3c45137b6eb32c84fcd95b86cd54c255b9";
+export const METRIC_DEPTH_MODEL_FILENAME = "model.onnx";
+export const METRIC_DEPTH_MODEL_URL =
+  "https://huggingface.co/77ukhtar/depth-anything-v2-metric-onnx/resolve/a4259a3c45137b6eb32c84fcd95b86cd54c255b9/model.onnx";
+export const METRIC_DEPTH_MODEL_SHA256 =
+  "badcaa28c923da4b0bfaa370ed709acfa00e9f743d295d5443e2149a383413c9";
+export const METRIC_DEPTH_MODEL_SIZE_BYTES = 98_941_181;
+export const METRIC_DEPTH_MODEL_LICENSE = "Apache-2.0";
+export const METRIC_DEPTH_MODEL_FAMILY =
+  "Depth Anything V2 Metric Hypersim Small";
+export const METRIC_DEPTH_INPUT_NAME = "pixel_values";
+export const METRIC_DEPTH_INPUT_SHAPE = [1, 3, 518, 518] as const;
+export const METRIC_DEPTH_INPUT_DTYPE = "float32";
+export const METRIC_DEPTH_OUTPUT_NAME = "predicted_depth";
+export const METRIC_DEPTH_OUTPUT_SHAPE = [1, 518, 518] as const;
+export const METRIC_DEPTH_OUTPUT_UNIT = "meter";
+export const METRIC_DEPTH_OUTPUT_MIN_METERS = 0;
+export const METRIC_DEPTH_OUTPUT_MAX_METERS = 20;
+export const METRIC_DEPTH_OUTPUT_ORIENTATION = "far-is-larger";
+export const METRIC_DEPTH_INPUT_SIZE = 518;
+export const METRIC_DEPTH_IMAGENET_MEAN = [0.485, 0.456, 0.406] as const;
+export const METRIC_DEPTH_IMAGENET_STD = [0.229, 0.224, 0.225] as const;
 
 export type RawDepthOrientation = "near-is-larger" | "near-is-smaller";
 
@@ -150,6 +178,38 @@ export async function captureVideoFrame(
     sourceFrameId: `video-frame:${timestamp}`,
     captureTimestamp: timestamp / 1_000,
   };
+}
+
+export function normalizeMetricRgbaToNchw(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Float32Array {
+  const expectedLength =
+    METRIC_DEPTH_INPUT_SIZE * METRIC_DEPTH_INPUT_SIZE * 4;
+  if (
+    !(rgba instanceof Uint8ClampedArray) ||
+    width !== METRIC_DEPTH_INPUT_SIZE ||
+    height !== METRIC_DEPTH_INPUT_SIZE ||
+    rgba.length !== expectedLength
+  ) {
+    throw new TypeError(
+      "Metric depth input must be a Uint8ClampedArray containing exactly 518x518 RGBA pixels",
+    );
+  }
+
+  const planeSize = width * height;
+  const output = new Float32Array(3 * planeSize);
+  for (let pixel = 0; pixel < planeSize; pixel += 1) {
+    const rgbaOffset = pixel * 4;
+    for (let channel = 0; channel < 3; channel += 1) {
+      output[channel * planeSize + pixel] =
+        (rgba[rgbaOffset + channel]! / 255 -
+          METRIC_DEPTH_IMAGENET_MEAN[channel]!) /
+        METRIC_DEPTH_IMAGENET_STD[channel]!;
+    }
+  }
+  return output;
 }
 
 export function normalizeRelativeDepth(
