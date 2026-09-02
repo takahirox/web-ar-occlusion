@@ -20,7 +20,7 @@
     </header>
 
     <section class="stage-card" aria-label="Camera and WebGPU preview">
-      <div class="stage" id="stage">
+      <div class="stage flip-x" id="stage">
         <video id="camera" autoplay muted playsinline></video>
         <canvas id="gpu" aria-label="Transparent WebGPU virtual content overlay"></canvas>
         <div class="start-screen" id="startScreen">
@@ -47,6 +47,13 @@
             <button type="button" data-profile="performance" aria-pressed="false"><b>Performance</b><small>8 Hz · 320×192 · max age 250 ms</small></button>
             <button type="button" data-profile="balanced" aria-pressed="true"><b>Balanced</b><small>12 Hz · 384×224 · max age 250 ms</small></button>
             <button type="button" data-profile="quality" aria-pressed="false"><b>Quality</b><small>18 Hz · 480×270 · max age 200 ms</small></button>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Horizontal orientation</legend>
+          <div class="segmented" id="orientationControls">
+            <button type="button" data-flip="true" aria-pressed="true">Corrected</button>
+            <button type="button" data-flip="false" aria-pressed="false">Raw</button>
           </div>
         </fieldset>
         <button class="secondary" id="stop" type="button" disabled>Stop camera</button>

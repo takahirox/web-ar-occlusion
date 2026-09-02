@@ -89,16 +89,20 @@ test('supports HEAD and rejects methods, missing files, and traversal', async ()
   });
 });
 
-test('UI states explicit consent, real relative depth, and fail-closed telemetry', async () => {
-  const [html, script] = await Promise.all([
+test('UI states explicit consent, aligned horizontal correction, real relative depth, and fail-closed telemetry', async () => {
+  const [html, script, style] = await Promise.all([
     readFile(resolve(root, 'index.html'), 'utf8'),
-    readFile(resolve(root, 'main.js'), 'utf8')
+    readFile(resolve(root, 'main.js'), 'utf8'),
+    readFile(resolve(root, 'style.css'), 'utf8')
   ]);
   assert.match(html, /id="start"[^>]*>Start camera/);
   assert.match(html, /id="stop"/);
   assert.match(html, /Occlusion/);
   assert.match(html, /No occlusion/);
   assert.match(html, /Depth view/);
+  assert.match(html, /class="stage flip-x" id="stage"/);
+  assert.match(html, /id="orientationControls"/);
+  assert.match(html, /data-flip="true" aria-pressed="true">Corrected/);
   assert.match(html, /8 Hz · 320×192 · max age 250 ms/);
   assert.match(html, /12 Hz · 384×224 · max age 250 ms/);
   assert.match(html, /18 Hz · 480×270 · max age 200 ms/);
@@ -134,6 +138,8 @@ test('UI states explicit consent, real relative depth, and fail-closed telemetry
   assert.match(script, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(script, /getContext\('webgpu'\)/);
   assert.match(script, /requestAnimationFrame\(render\)/);
+  assert.match(script, /stage\.classList\.toggle\('flip-x', state\.previewFlipped\)/);
+  assert.match(style, /\.stage\.flip-x video, \.stage\.flip-x canvas \{ transform: scaleX\(-1\); \}/);
   assert.match(script, /device\.lost/);
   assert.match(script, /model-loading/);
   assert.match(script, /device-lost/);

@@ -30,6 +30,7 @@ p { margin: 0; }
 video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 video { background: #050808; }
 canvas { z-index: 2; pointer-events: none; }
+.stage.flip-x video, .stage.flip-x canvas { transform: scaleX(-1); }
 .start-screen { position: absolute; z-index: 5; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center; padding: 28px; background: radial-gradient(circle, rgba(16,37,34,.92), rgba(5,10,10,.98)); transition: opacity .25s; }
 .start-screen.hidden { opacity: 0; pointer-events: none; }
 .start-screen p { color: #aebbb9; line-height: 1.55; max-width: 570px; margin: 8px 0 22px; }
@@ -41,7 +42,7 @@ button:focus-visible { outline: 3px solid #89efd0; outline-offset: 3px; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .status-pill { position: absolute; z-index: 6; left: 16px; top: 16px; padding: 8px 11px; color: #c7d4d1; background: rgba(4,10,9,.75); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; font-size: .72rem; }
 .status-pill.error { color: #ffd0cb; border-color: #8e4038; background: rgba(66,15,12,.86); }
-.controls { display: grid; grid-template-columns: 1fr 1.55fr auto; gap: 18px; padding: 18px; align-items: end; }
+.controls { display: grid; grid-template-columns: 1fr 1.55fr .9fr auto; gap: 18px; padding: 18px; align-items: end; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 legend { color: #8ea19d; font-size: .7rem; font-weight: 700; margin: 0 0 8px; }
 .segmented { display: flex; padding: 4px; gap: 3px; background: #101c1a; border: 1px solid #253633; border-radius: 12px; }

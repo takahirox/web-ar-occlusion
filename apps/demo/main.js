@@ -7,14 +7,14 @@ const profiles = Object.freeze({
 });
 
 const elements = Object.fromEntries([
-  'camera', 'gpu', 'stage', 'startScreen', 'start', 'stop', 'status', 'viewControls',
+  'camera', 'gpu', 'stage', 'startScreen', 'start', 'stop', 'status', 'viewControls', 'orientationControls',
   'profileControls', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid',
   'cameraSize', 'viewMode', 'lifecycle', 'provider', 'backend', 'model'
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
   lifecycle: 'idle', stream: null, generation: 0, requested: 'balanced', active: 'balanced',
-  view: 'occlusion', device: null, context: null, pipeline: null, uniformBuffer: null,
+  view: 'occlusion', previewFlipped: true, device: null, context: null, pipeline: null, uniformBuffer: null,
   bindGroup: null, placeholderDepth: null, depthFrame: null, depthValid: false,
   depthReason: 'no result', provider: null, providerState: 'idle', animation: 0,
   inferenceTimer: 0, inferencePending: false, inferenceRequest: 0, acceptedRequest: 0,
@@ -434,6 +434,13 @@ elements.viewControls.addEventListener('click', ({ target }) => {
 elements.profileControls.addEventListener('click', ({ target }) => {
   const button = target.closest('button[data-profile]');
   if (button) requestProfile(button.dataset.profile);
+});
+elements.orientationControls.addEventListener('click', ({ target }) => {
+  const button = target.closest('button[data-flip]');
+  if (!button) return;
+  state.previewFlipped = button.dataset.flip === 'true';
+  elements.stage.classList.toggle('flip-x', state.previewFlipped);
+  selectButton(elements.orientationControls, 'flip', String(state.previewFlipped));
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
