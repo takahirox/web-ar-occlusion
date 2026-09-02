@@ -47,12 +47,24 @@ export interface CapturedVideoFrame {
   readonly close?: () => void;
 }
 
-export interface RuntimeDepthResult {
+export interface RelativeRuntimeDepthResult {
+  readonly kind?: "relative";
   readonly data: ArrayLike<number>;
   readonly width: number;
   readonly height: number;
   readonly orientation: RawDepthOrientation;
 }
+
+export interface NativeMetricRuntimeDepthResult {
+  readonly kind: "native-metric";
+  readonly data: Float32Array;
+  readonly width: typeof METRIC_DEPTH_INPUT_SIZE;
+  readonly height: typeof METRIC_DEPTH_INPUT_SIZE;
+}
+
+export type RuntimeDepthResult =
+  | RelativeRuntimeDepthResult
+  | NativeMetricRuntimeDepthResult;
 
 export interface DepthEstimator {
   infer(
@@ -72,6 +84,7 @@ export interface DepthRuntime {
     readonly revision: typeof DEPTH_MODEL_REVISION;
     readonly device: "webgpu";
     readonly dtype: typeof DEPTH_MODEL_DTYPE;
+    readonly signal?: AbortSignal;
   }): Promise<DepthEstimator>;
   dispose?(): void | Promise<void>;
 }
@@ -83,6 +96,7 @@ export type FrameCapture = (
 export interface WebGPUDepthProviderOptions {
   readonly device: GPUDevice;
   readonly runtime?: DepthRuntime;
+  readonly nativeMetricRuntimeDependencies?: NativeMetricDepthRuntimeDependencies;
   readonly capture?: FrameCapture;
 }
 
@@ -106,6 +120,7 @@ export interface ProviderDepthFrame {
   readonly representation: "inverse-z";
   readonly scale: "relative";
   readonly unit: null;
+  readonly nativeMetric?: NativeMetricDepthEvidence;
   readonly captureTimestamp: number;
   readonly sourceFrameId: string;
   readonly uvTransform: Float32Array;
@@ -124,6 +139,62 @@ export interface NativeMetricDepthEvidence {
   readonly unit: "meter";
   readonly sourceFrameId: string;
   readonly captureTimestamp: number;
+}
+
+interface NativeMetricOrtTensor {
+  readonly type?: string;
+  readonly data?: unknown;
+  readonly dims?: ArrayLike<number>;
+}
+
+interface NativeMetricOrtSession {
+  readonly inputNames?: readonly string[];
+  readonly outputNames?: readonly string[];
+  run(feeds: Record<string, unknown>): Promise<Record<string, NativeMetricOrtTensor>>;
+  release?(): void | Promise<void>;
+}
+
+interface NativeMetricOrtModule {
+  readonly Tensor: new (
+    type: "float32",
+    data: Float32Array,
+    dims: readonly number[],
+  ) => unknown;
+  readonly InferenceSession: {
+    create(
+      model: Uint8Array,
+      options: { readonly executionProviders: readonly ["webgpu"] },
+    ): Promise<NativeMetricOrtSession>;
+  };
+}
+
+interface MetricModelResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+export interface NativeMetricDepthRuntimeDependencies {
+  readonly loadOrt?: () => Promise<NativeMetricOrtModule>;
+  readonly fetch?: (
+    url: string,
+    init: { readonly signal?: AbortSignal },
+  ) => Promise<MetricModelResponse>;
+  readonly crypto?: {
+    readonly subtle: {
+      digest(algorithm: "SHA-256", data: ArrayBuffer): Promise<ArrayBuffer>;
+    };
+  };
+  readonly resize?: (
+    input: {
+      readonly data: Uint8ClampedArray;
+      readonly width: number;
+      readonly height: number;
+    },
+    options: { readonly signal: AbortSignal },
+  ) => Uint8ClampedArray | Promise<Uint8ClampedArray>;
+  readonly expectedModelSizeBytes?: number;
+  readonly expectedModelSha256?: string;
 }
 
 const TEXTURE_USAGE_COPY_DST = 0x02;
@@ -398,6 +469,224 @@ function extractRuntimeDepth(value: unknown): {
     throw new TypeError("Transformers.js returned an invalid depth tensor");
   }
   return { data: depth.data, width, height };
+}
+
+function throwIfAborted(signal: AbortSignal, message: string): void {
+  if (signal.aborted) throw abortError(message);
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (value) =>
+    value.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+async function resizeMetricRgba(
+  input: {
+    readonly data: Uint8ClampedArray;
+    readonly width: number;
+    readonly height: number;
+  },
+  options: { readonly signal: AbortSignal },
+): Promise<Uint8ClampedArray> {
+  throwIfAborted(options.signal, "Metric depth resize aborted");
+  if (
+    !validDimension(input.width) ||
+    !validDimension(input.height) ||
+    input.data.length !== input.width * input.height * 4
+  ) {
+    throw new TypeError("Metric depth resize received invalid RGBA pixels");
+  }
+  if (
+    input.width === METRIC_DEPTH_INPUT_SIZE &&
+    input.height === METRIC_DEPTH_INPUT_SIZE
+  ) {
+    return new Uint8ClampedArray(input.data);
+  }
+
+  const image = new ImageData(
+    new Uint8ClampedArray(input.data),
+    input.width,
+    input.height,
+  );
+  const bitmap = await createImageBitmap(image, {
+    resizeWidth: METRIC_DEPTH_INPUT_SIZE,
+    resizeHeight: METRIC_DEPTH_INPUT_SIZE,
+    resizeQuality: "high",
+  });
+  try {
+    throwIfAborted(options.signal, "Metric depth resize aborted");
+    const canvas = new OffscreenCanvas(
+      METRIC_DEPTH_INPUT_SIZE,
+      METRIC_DEPTH_INPUT_SIZE,
+    );
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("2D canvas is unavailable for metric depth");
+    context.drawImage(
+      bitmap,
+      0,
+      0,
+      METRIC_DEPTH_INPUT_SIZE,
+      METRIC_DEPTH_INPUT_SIZE,
+    );
+    throwIfAborted(options.signal, "Metric depth resize aborted");
+    return new Uint8ClampedArray(
+      context.getImageData(
+        0,
+        0,
+        METRIC_DEPTH_INPUT_SIZE,
+        METRIC_DEPTH_INPUT_SIZE,
+      ).data,
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
+function hasExactNames(actual: readonly string[] | undefined, name: string): boolean {
+  return actual?.length === 1 && actual[0] === name;
+}
+
+function hasExactDims(
+  actual: ArrayLike<number> | undefined,
+  expected: readonly number[],
+): boolean {
+  return actual?.length === expected.length &&
+    expected.every((value, index) => actual[index] === value);
+}
+
+export function createNativeMetricDepthRuntime(
+  dependencies: NativeMetricDepthRuntimeDependencies = {},
+): DepthRuntime {
+  let releaseSession: (() => Promise<void>) | undefined;
+
+  return {
+    async createEstimator(options) {
+      if (releaseSession) {
+        throw new Error("Native metric estimator was already created");
+      }
+      const signal = options.signal ?? new AbortController().signal;
+      const fetchModel = dependencies.fetch ?? ((url, init) =>
+        globalThis.fetch(url, init));
+      const cryptoProvider = dependencies.crypto ?? globalThis.crypto;
+      const expectedSize = dependencies.expectedModelSizeBytes ??
+        METRIC_DEPTH_MODEL_SIZE_BYTES;
+      const expectedSha = dependencies.expectedModelSha256 ??
+        METRIC_DEPTH_MODEL_SHA256;
+
+      throwIfAborted(signal, "Metric depth initialization aborted");
+      const response = await fetchModel(METRIC_DEPTH_MODEL_URL, { signal });
+      throwIfAborted(signal, "Metric depth initialization aborted");
+      if (!response.ok) {
+        throw new Error(`Metric depth model fetch failed (${response.status})`);
+      }
+      const modelBytes = await response.arrayBuffer();
+      throwIfAborted(signal, "Metric depth initialization aborted");
+      if (modelBytes.byteLength !== expectedSize) {
+        throw new TypeError("Metric depth model byte length did not match its pin");
+      }
+      if (!cryptoProvider?.subtle) {
+        throw new Error("Web Crypto is required to verify the metric depth model");
+      }
+      const digest = await cryptoProvider.subtle.digest("SHA-256", modelBytes);
+      throwIfAborted(signal, "Metric depth initialization aborted");
+      if (bytesToHex(digest) !== expectedSha) {
+        throw new TypeError("Metric depth model SHA-256 did not match its pin");
+      }
+
+      const loadOrt = dependencies.loadOrt ?? (async () =>
+        await import(ONNX_RUNTIME_WEBGPU_ESM_URL) as NativeMetricOrtModule);
+      throwIfAborted(signal, "Metric depth initialization aborted");
+      const ort = await loadOrt();
+      throwIfAborted(signal, "Metric depth initialization aborted");
+      const session = await ort.InferenceSession.create(
+        new Uint8Array(modelBytes),
+        { executionProviders: ["webgpu"] },
+      );
+
+      let released = false;
+      let releasePromise: Promise<void> | undefined;
+      const releaseOnce = (): Promise<void> => {
+        if (!releasePromise) {
+          released = true;
+          releasePromise = Promise.resolve(session.release?.()).then(() => undefined);
+        }
+        return releasePromise;
+      };
+      releaseSession = releaseOnce;
+
+      if (signal.aborted) {
+        await releaseOnce();
+        throw abortError("Metric depth initialization aborted");
+      }
+      if (
+        !hasExactNames(session.inputNames, METRIC_DEPTH_INPUT_NAME) ||
+        !hasExactNames(session.outputNames, METRIC_DEPTH_OUTPUT_NAME)
+      ) {
+        await releaseOnce();
+        throw new TypeError("Metric depth model tensor names did not match their pins");
+      }
+
+      const resize = dependencies.resize ?? resizeMetricRgba;
+      return {
+        async infer(input, inferenceOptions) {
+          if (released) throw new Error("Metric depth estimator is disposed");
+          throwIfAborted(inferenceOptions.signal, "Metric depth inference aborted");
+          const resized = await resize(input, inferenceOptions);
+          throwIfAborted(inferenceOptions.signal, "Metric depth inference aborted");
+          if (
+            !(resized instanceof Uint8ClampedArray) ||
+            resized.length !== METRIC_DEPTH_INPUT_SIZE ** 2 * 4
+          ) {
+            throw new TypeError("Metric depth resize must return exactly 518x518 RGBA pixels");
+          }
+          const normalized = normalizeMetricRgbaToNchw(
+            resized,
+            METRIC_DEPTH_INPUT_SIZE,
+            METRIC_DEPTH_INPUT_SIZE,
+          );
+          const tensor = new ort.Tensor(
+            METRIC_DEPTH_INPUT_DTYPE,
+            normalized,
+            METRIC_DEPTH_INPUT_SHAPE,
+          );
+          const outputs = await session.run({
+            [METRIC_DEPTH_INPUT_NAME]: tensor,
+          });
+          throwIfAborted(inferenceOptions.signal, "Metric depth inference aborted");
+          if (!Object.prototype.hasOwnProperty.call(outputs, METRIC_DEPTH_OUTPUT_NAME)) {
+            throw new TypeError("Metric depth output tensor is missing");
+          }
+          const output = outputs[METRIC_DEPTH_OUTPUT_NAME];
+          if (
+            output?.type !== METRIC_DEPTH_INPUT_DTYPE ||
+            !(output.data instanceof Float32Array) ||
+            !hasExactDims(output.dims, METRIC_DEPTH_OUTPUT_SHAPE) ||
+            output.data.length !== METRIC_DEPTH_INPUT_SIZE ** 2
+          ) {
+            throw new TypeError("Metric depth output tensor did not match its pin");
+          }
+          if (!output.data.some((value) =>
+            Number.isFinite(value) &&
+            value > METRIC_DEPTH_OUTPUT_MIN_METERS &&
+            value <= METRIC_DEPTH_OUTPUT_MAX_METERS
+          )) {
+            throw new RangeError("Metric depth output contains no valid samples");
+          }
+          return {
+            kind: "native-metric",
+            data: output.data,
+            width: METRIC_DEPTH_INPUT_SIZE,
+            height: METRIC_DEPTH_INPUT_SIZE,
+          };
+        },
+        dispose: releaseOnce,
+      };
+    },
+    async dispose() {
+      await releaseSession?.();
+    },
+  };
 }
 
 export function createTransformersDepthRuntime(): DepthRuntime {

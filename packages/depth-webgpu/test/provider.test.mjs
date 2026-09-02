@@ -33,6 +33,7 @@ import {
   WebGPUMonocularDepthProvider,
   captureVideoFrame,
   createNativeMetricDepthEvidence,
+  createNativeMetricDepthRuntime,
   normalizeMetricRgbaToNchw,
   normalizeRelativeDepth,
   preserveRawNearIsLargerDepth,
@@ -283,6 +284,191 @@ test("rejects an all-invalid native metric frame", () => {
     () => createNativeMetricDepthEvidence(samples, 518, 518, "frame", 1),
     /no valid samples/,
   );
+});
+
+function fakeNativeRuntime(overrides = {}) {
+  const calls = {
+    fetch: [],
+    digest: [],
+    create: [],
+    resize: [],
+    tensor: [],
+    run: [],
+    release: 0,
+    loadOrt: 0,
+  };
+  const modelBytes = new Uint8Array([1, 2, 3, 4]).buffer;
+  const digestBytes = new Uint8Array(32).fill(0xab).buffer;
+  const output = overrides.output ?? {
+    type: "float32",
+    data: new Float32Array(METRIC_DEPTH_INPUT_SIZE ** 2).fill(2),
+    dims: [1, 518, 518],
+  };
+  const session = {
+    inputNames: overrides.inputNames ?? [METRIC_DEPTH_INPUT_NAME],
+    outputNames: overrides.outputNames ?? [METRIC_DEPTH_OUTPUT_NAME],
+    async run(feeds) {
+      calls.run.push(feeds);
+      return overrides.outputs ?? { [METRIC_DEPTH_OUTPUT_NAME]: output };
+    },
+    release() {
+      calls.release += 1;
+    },
+  };
+  const ort = {
+    Tensor: class {
+      constructor(type, data, dims) {
+        Object.assign(this, { type, data, dims });
+        calls.tensor.push(this);
+      }
+    },
+    InferenceSession: {
+      async create(bytes, options) {
+        calls.create.push({ bytes: bytes.slice(), options });
+        return session;
+      },
+    },
+  };
+  const dependencies = {
+    expectedModelSizeBytes: overrides.expectedModelSizeBytes ?? 4,
+    expectedModelSha256: overrides.expectedModelSha256 ?? "ab".repeat(32),
+    async fetch(url, init) {
+      calls.fetch.push({ url, init });
+      return {
+        ok: overrides.responseOk ?? true,
+        status: overrides.responseStatus ?? 200,
+        async arrayBuffer() {
+          return overrides.modelBytes ?? modelBytes;
+        },
+      };
+    },
+    crypto: {
+      subtle: {
+        async digest(algorithm, bytes) {
+          calls.digest.push({ algorithm, bytes });
+          return overrides.digestBytes ?? digestBytes;
+        },
+      },
+    },
+    async loadOrt() {
+      calls.loadOrt += 1;
+      return ort;
+    },
+    async resize(input, options) {
+      calls.resize.push({ input, options });
+      return overrides.resized ?? new Uint8ClampedArray(518 * 518 * 4);
+    },
+  };
+  return { calls, dependencies, modelBytes };
+}
+
+const legacyEstimatorOptions = (signal) => ({
+  model: DEPTH_MODEL_ID,
+  revision: DEPTH_MODEL_REVISION,
+  device: "webgpu",
+  dtype: DEPTH_MODEL_DTYPE,
+  signal,
+});
+
+test("loads the pinned metric artifact and runs an exact WebGPU tensor contract", async () => {
+  const fake = fakeNativeRuntime();
+  const runtime = createNativeMetricDepthRuntime(fake.dependencies);
+  const controller = new AbortController();
+  const estimator = await runtime.createEstimator(legacyEstimatorOptions(controller.signal));
+
+  assert.equal(fake.calls.fetch[0].url, METRIC_DEPTH_MODEL_URL);
+  assert.strictEqual(fake.calls.fetch[0].init.signal, controller.signal);
+  assert.equal(fake.calls.digest[0].algorithm, "SHA-256");
+  assert.strictEqual(fake.calls.digest[0].bytes, fake.modelBytes);
+  assert.equal(fake.calls.loadOrt, 1);
+  assert.deepEqual(fake.calls.create[0].options, { executionProviders: ["webgpu"] });
+  assert.deepEqual([...fake.calls.create[0].bytes], [1, 2, 3, 4]);
+
+  const pixels = new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]);
+  const result = await estimator.infer(
+    { data: pixels, width: 2, height: 1 },
+    { signal: controller.signal },
+  );
+  assert.strictEqual(fake.calls.resize[0].input.data, pixels);
+  assert.equal(fake.calls.resize[0].input.width, 2);
+  assert.equal(fake.calls.resize[0].input.height, 1);
+  assert.equal(fake.calls.tensor[0].type, "float32");
+  assert.deepEqual(fake.calls.tensor[0].dims, [1, 3, 518, 518]);
+  assert.ok(fake.calls.tensor[0].data instanceof Float32Array);
+  assert.strictEqual(fake.calls.run[0][METRIC_DEPTH_INPUT_NAME], fake.calls.tensor[0]);
+  assert.equal(result.kind, "native-metric");
+  assert.equal(result.width, 518);
+  assert.equal(result.height, 518);
+  assert.ok(result.data.every((value) => value === 2));
+
+  await estimator.dispose();
+  await runtime.dispose();
+  await estimator.dispose();
+  assert.equal(fake.calls.release, 1);
+});
+
+test("rejects metric artifacts whose size or SHA-256 does not match", async () => {
+  const wrongSize = fakeNativeRuntime({ expectedModelSizeBytes: 5 });
+  await assert.rejects(
+    createNativeMetricDepthRuntime(wrongSize.dependencies).createEstimator(
+      legacyEstimatorOptions(new AbortController().signal),
+    ),
+    /byte length did not match/,
+  );
+  assert.equal(wrongSize.calls.digest.length, 0);
+  assert.equal(wrongSize.calls.loadOrt, 0);
+
+  const wrongSha = fakeNativeRuntime({ expectedModelSha256: "ff".repeat(32) });
+  await assert.rejects(
+    createNativeMetricDepthRuntime(wrongSha.dependencies).createEstimator(
+      legacyEstimatorOptions(new AbortController().signal),
+    ),
+    /SHA-256 did not match/,
+  );
+  assert.equal(wrongSha.calls.digest.length, 1);
+  assert.equal(wrongSha.calls.loadOrt, 0);
+});
+
+test("fails closed for malformed or wholly invalid metric tensors", async () => {
+  const wrongShape = fakeNativeRuntime({
+    output: {
+      type: "float32",
+      data: new Float32Array(518 * 518).fill(1),
+      dims: [1, 1, 518, 518],
+    },
+  });
+  const wrongShapeEstimator = await createNativeMetricDepthRuntime(
+    wrongShape.dependencies,
+  ).createEstimator(legacyEstimatorOptions(new AbortController().signal));
+  await assert.rejects(
+    wrongShapeEstimator.infer(
+      { data: new Uint8ClampedArray(4), width: 1, height: 1 },
+      { signal: new AbortController().signal },
+    ),
+    /output tensor did not match/,
+  );
+
+  const invalid = fakeNativeRuntime({
+    output: {
+      type: "float32",
+      data: new Float32Array(518 * 518).fill(Number.NaN),
+      dims: [1, 518, 518],
+    },
+  });
+  const invalidEstimator = await createNativeMetricDepthRuntime(
+    invalid.dependencies,
+  ).createEstimator(legacyEstimatorOptions(new AbortController().signal));
+  await assert.rejects(
+    invalidEstimator.infer(
+      { data: new Uint8ClampedArray(4), width: 1, height: 1 },
+      { signal: new AbortController().signal },
+    ),
+    /no valid samples/,
+  );
+  assert.equal(wrongShape.calls.release, 0);
+  assert.equal(invalid.calls.release, 0);
+  await wrongShapeEstimator.dispose();
+  await invalidEstimator.dispose();
 });
 
 test("normalizes only finite depth with an explicit near/far orientation", () => {
