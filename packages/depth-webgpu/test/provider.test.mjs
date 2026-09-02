@@ -542,6 +542,7 @@ test("forwards pixels and preserves association while uploading padded textures"
   assert.equal(output.rawOrientation, "near-is-larger");
   assert.deepEqual([...output.rawInverseDepth], [1, 3, 2, NaN]);
   assert.equal(output.confidence, undefined);
+  assert.equal(output.nativeMetric, undefined);
   assert.equal(releases, 1);
 
   assert.equal(gpu.textures[0].descriptor.format, "r32float");
@@ -551,6 +552,90 @@ test("forwards pixels and preserves association while uploading padded textures"
   assert.deepEqual([...gpu.writes[0].data.slice(0, 2)], [0, 1]);
   assert.deepEqual([...gpu.writes[0].data.slice(64, 66)], [0.5, 0]);
   assert.equal(gpu.writes.length, 1);
+  await provider.dispose();
+});
+
+test("uses native metric ONNX by default and preserves frame-exact evidence", async () => {
+  const gpu = fakeGpu();
+  const metricValues = new Float32Array(METRIC_DEPTH_INPUT_SIZE ** 2).fill(2);
+  metricValues.set([1, 2, 4]);
+  const fake = fakeNativeRuntime({
+    output: {
+      type: "float32",
+      data: metricValues,
+      dims: [1, 518, 518],
+    },
+  });
+  let releases = 0;
+  const pixels = new Uint8ClampedArray(16);
+  const provider = new WebGPUMonocularDepthProvider({
+    device: gpu.device,
+    nativeMetricRuntimeDependencies: fake.dependencies,
+    capture: fakeCapture,
+  });
+
+  await provider.initialize();
+  const output = await provider.infer(
+    frame("metric-camera-7", 81.25, pixels, () => releases += 1),
+  );
+
+  assert.equal(fake.calls.fetch[0].url, METRIC_DEPTH_MODEL_URL);
+  assert.strictEqual(fake.calls.resize[0].input.data, pixels);
+  assert.equal(output.width, 518);
+  assert.equal(output.height, 518);
+  assert.equal(output.sourceFrameId, "metric-camera-7");
+  assert.equal(output.captureTimestamp, 81.25);
+  assert.ok(output.nativeMetric);
+  assert.equal(output.nativeMetric.sourceFrameId, output.sourceFrameId);
+  assert.equal(output.nativeMetric.captureTimestamp, output.captureTimestamp);
+  assert.equal(output.nativeMetric.representation, "linear-z");
+  assert.equal(output.nativeMetric.scale, "metric");
+  assert.equal(output.nativeMetric.unit, "meter");
+  assert.strictEqual(output.rawInverseDepth, output.nativeMetric.inverseZ);
+  assert.deepEqual([...output.nativeMetric.linearZMeters.slice(0, 3)], [1, 2, 4]);
+  assert.deepEqual([...output.rawInverseDepth.slice(0, 3)], [1, 0.5, 0.25]);
+  assert.deepEqual([...output.uvTransform], [1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  assert.equal(gpu.textures.length, 1);
+  assert.equal(gpu.writes.length, 1);
+  assert.deepEqual(
+    [...gpu.writes[0].data.slice(0, 3)],
+    [1, Math.fround(1 / 3), 0],
+  );
+  assert.equal(releases, 1);
+
+  await provider.dispose();
+  assert.equal(fake.calls.release, 1);
+});
+
+test("stopping during native metric initialization aborts without creating a session", async () => {
+  const gpu = fakeGpu();
+  const response = deferred();
+  const fake = fakeNativeRuntime();
+  fake.dependencies.fetch = async (url, init) => {
+    fake.calls.fetch.push({ url, init });
+    return response.promise;
+  };
+  const provider = new WebGPUMonocularDepthProvider({
+    device: gpu.device,
+    nativeMetricRuntimeDependencies: fake.dependencies,
+    capture: fakeCapture,
+  });
+
+  const initializing = provider.initialize();
+  await Promise.resolve();
+  provider.stop();
+  response.resolve({
+    ok: true,
+    status: 200,
+    async arrayBuffer() {
+      return fake.modelBytes;
+    },
+  });
+
+  await assert.rejects(initializing, { name: "AbortError" });
+  assert.equal(fake.calls.create.length, 0);
+  assert.equal(gpu.textures.length, 0);
+  assert.equal(provider.state, "stopped");
   await provider.dispose();
 });
 

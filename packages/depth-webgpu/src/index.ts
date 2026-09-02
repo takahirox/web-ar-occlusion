@@ -749,6 +749,7 @@ export class WebGPUMonocularDepthProvider {
   readonly #capture: FrameCapture;
   #state: WebGPUDepthProviderState = "new";
   #initialization: Promise<void> | undefined;
+  #initializationController = new AbortController();
   #estimator: DepthEstimator | undefined;
   #sequence = 0;
   #generation = 0;
@@ -759,7 +760,9 @@ export class WebGPUMonocularDepthProvider {
 
   constructor(options: WebGPUDepthProviderOptions) {
     this.#device = options.device;
-    this.#runtime = options.runtime ?? createTransformersDepthRuntime();
+    this.#runtime = options.runtime ?? createNativeMetricDepthRuntime(
+      options.nativeMetricRuntimeDependencies,
+    );
     this.#capture = options.capture ?? captureVideoFrame;
   }
 
@@ -781,6 +784,7 @@ export class WebGPUMonocularDepthProvider {
       revision: DEPTH_MODEL_REVISION,
       device: "webgpu",
       dtype: DEPTH_MODEL_DTYPE,
+      signal: this.#initializationController.signal,
     }).then(async (estimator) => {
       if (this.#state !== "initializing" || this.#generation !== generation) {
         await estimator.dispose?.();
@@ -822,6 +826,7 @@ export class WebGPUMonocularDepthProvider {
 
   abort(): void {
     this.#generation += 1;
+    this.#initializationController.abort();
     this.#active?.controller.abort();
     if (this.#pending) {
       releaseCapture(this.#pending.capture);
@@ -916,8 +921,29 @@ export class WebGPUMonocularDepthProvider {
     ) {
       throw new TypeError("Runtime returned invalid depth dimensions");
     }
-    const rawInverseDepth = preserveRawNearIsLargerDepth(result.data, result.orientation);
-    const normalized = normalizeRelativeDepth(rawInverseDepth, result.orientation);
+    let nativeMetric: NativeMetricDepthEvidence | undefined;
+    let rawInverseDepth: Float32Array;
+    if (result.kind === "native-metric") {
+      nativeMetric = createNativeMetricDepthEvidence(
+        result.data,
+        result.width,
+        result.height,
+        capture.sourceFrameId,
+        capture.captureTimestamp,
+      );
+      rawInverseDepth = nativeMetric.inverseZ;
+    } else if (result.kind === undefined || result.kind === "relative") {
+      rawInverseDepth = preserveRawNearIsLargerDepth(
+        result.data,
+        result.orientation,
+      );
+    } else {
+      throw new TypeError("Runtime returned an unknown depth result kind");
+    }
+    const normalized = normalizeRelativeDepth(
+      rawInverseDepth,
+      "near-is-larger",
+    );
     const created: GPUTexture[] = [];
     try {
       const depth = this.#upload("r32float", normalized, result.width, result.height);
@@ -930,6 +956,7 @@ export class WebGPUMonocularDepthProvider {
         representation: "inverse-z",
         scale: "relative",
         unit: null,
+        ...(nativeMetric ? { nativeMetric } : {}),
         captureTimestamp: capture.captureTimestamp,
         sourceFrameId: capture.sourceFrameId,
         uvTransform: new Float32Array(IDENTITY_UV_TRANSFORM),
