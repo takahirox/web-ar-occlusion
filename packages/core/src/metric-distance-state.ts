@@ -4,7 +4,7 @@ export type MetricDistanceProvenance =
 
 export interface MetricDistanceObservation {
   readonly sourceId: string;
-  readonly sourceFrameId: number;
+  readonly sourceFrameId: string;
   readonly captureTimestamp: number;
   readonly depthMeters: number;
   readonly normalizedX: number;
@@ -130,9 +130,8 @@ function isValidObservation(
     hasExactObservationFields(observation) &&
     typeof observation.sourceId === "string" &&
     observation.sourceId.length > 0 &&
-    typeof observation.sourceFrameId === "number" &&
-    Number.isInteger(observation.sourceFrameId) &&
-    observation.sourceFrameId >= 0 &&
+    typeof observation.sourceFrameId === "string" &&
+    observation.sourceFrameId.length > 0 &&
     typeof observation.captureTimestamp === "number" &&
     Number.isFinite(observation.captureTimestamp) &&
     observation.captureTimestamp >= 0 &&
@@ -208,8 +207,10 @@ export function reduceMetricDistanceState(
 
   const previous = state.observations[state.observations.length - 1];
   if (
-    previous !== undefined &&
-    (observation.sourceFrameId <= previous.sourceFrameId ||
+    state.observations.some(
+      (item) => item.sourceFrameId === observation.sourceFrameId,
+    ) ||
+    (previous !== undefined &&
       observation.captureTimestamp <= previous.captureTimestamp)
   ) {
     return unavailableState(state.sourceId, "out-of-order");

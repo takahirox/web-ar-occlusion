@@ -10,7 +10,7 @@ const SOURCE_ID = "camera-a";
 
 function observation(
   sourceFrameId,
-  captureTimestamp = sourceFrameId,
+  captureTimestamp = Number(String(sourceFrameId).replace(/\D/g, "")) || 1,
   overrides = {},
 ) {
   return {
@@ -61,7 +61,7 @@ test("constant samples progress from approximate through refining to stable", ()
   for (let frame = 1; frame <= 10; frame += 1) {
     state = accept(
       state,
-      observation(frame, frame, {
+      observation(`frame-${frame}`, frame, {
         normalizedX: frame % 2 === 0 ? 0.45 : 0.55,
         provenance:
           frame % 2 === 0 ? "native-metric" : "manual-known-plane",
@@ -85,7 +85,7 @@ test("constant samples progress from approximate through refining to stable", ()
 });
 
 test("accepted observations, history, and returned states are frozen", () => {
-  const input = observation(1);
+  const input = observation("frame-1", 1);
   const state = accept(createMetricDistanceState(SOURCE_ID), input);
 
   assert.ok(Object.isFrozen(state));
@@ -102,7 +102,7 @@ test("alternating 1.8m and 2.2m samples remain noisy and never stable", () => {
   for (let frame = 1; frame <= 12; frame += 1) {
     state = accept(
       state,
-      observation(frame, frame, {
+      observation(`frame-${frame}`, frame, {
         depthMeters: frame % 2 === 0 ? 1.8 : 2.2,
       }),
     );
@@ -119,7 +119,7 @@ test("no horizontal travel caps repeatability at one half", () => {
   for (let frame = 1; frame <= 8; frame += 1) {
     state = accept(
       state,
-      observation(frame, frame, { normalizedX: 0.5 }),
+      observation(`frame-${frame}`, frame, { normalizedX: 0.5 }),
     );
   }
 
@@ -131,62 +131,52 @@ test("no horizontal travel caps repeatability at one half", () => {
 test("bad observations and invalidations immediately clear metric output", () => {
   const baseline = accept(
     createMetricDistanceState(SOURCE_ID),
-    observation(10, 10),
+    observation("frame-10", 10),
   );
   const cases = [
     [
       "source mismatch",
       {
         type: "observation",
-        observation: observation(11, 11, { sourceId: "camera-b" }),
+        observation: observation("frame-11", 11, { sourceId: "camera-b" }),
       },
       "source-mismatch",
     ],
     [
-      "repeated frame",
-      { type: "observation", observation: observation(10, 11) },
-      "out-of-order",
-    ],
-    [
-      "decreasing frame",
-      { type: "observation", observation: observation(9, 11) },
+      "duplicate frame",
+      { type: "observation", observation: observation("frame-10", 11) },
       "out-of-order",
     ],
     [
       "repeated timestamp",
-      { type: "observation", observation: observation(11, 10) },
+      { type: "observation", observation: observation("frame-11", 10) },
       "out-of-order",
     ],
     [
       "decreasing timestamp",
-      { type: "observation", observation: observation(11, 9) },
+      { type: "observation", observation: observation("frame-11", 9) },
       "out-of-order",
     ],
     [
-      "negative frame",
-      { type: "observation", observation: observation(-1, 11) },
-      "invalid-observation",
-    ],
-    [
-      "fractional frame",
-      { type: "observation", observation: observation(10.5, 11) },
+      "empty frame",
+      { type: "observation", observation: observation("", 11) },
       "invalid-observation",
     ],
     [
       "negative timestamp",
-      { type: "observation", observation: observation(11, -1) },
+      { type: "observation", observation: observation("frame-11", -1) },
       "invalid-observation",
     ],
     [
       "infinite timestamp",
-      { type: "observation", observation: observation(11, Infinity) },
+      { type: "observation", observation: observation("frame-11", Infinity) },
       "invalid-observation",
     ],
     [
       "zero depth",
       {
         type: "observation",
-        observation: observation(11, 11, { depthMeters: 0 }),
+        observation: observation("frame-11", 11, { depthMeters: 0 }),
       },
       "invalid-observation",
     ],
@@ -194,7 +184,7 @@ test("bad observations and invalidations immediately clear metric output", () =>
       "NaN depth",
       {
         type: "observation",
-        observation: observation(11, 11, { depthMeters: Number.NaN }),
+        observation: observation("frame-11", 11, { depthMeters: Number.NaN }),
       },
       "invalid-observation",
     ],
@@ -202,7 +192,7 @@ test("bad observations and invalidations immediately clear metric output", () =>
       "negative horizontal coordinate",
       {
         type: "observation",
-        observation: observation(11, 11, { normalizedX: -0.01 }),
+        observation: observation("frame-11", 11, { normalizedX: -0.01 }),
       },
       "invalid-observation",
     ],
@@ -210,7 +200,7 @@ test("bad observations and invalidations immediately clear metric output", () =>
       "horizontal coordinate above one",
       {
         type: "observation",
-        observation: observation(11, 11, { normalizedX: 1.01 }),
+        observation: observation("frame-11", 11, { normalizedX: 1.01 }),
       },
       "invalid-observation",
     ],
@@ -232,10 +222,10 @@ test("bad observations and invalidations immediately clear metric output", () =>
 test("the next valid exact-source sample restarts as approximate", () => {
   let state = accept(
     createMetricDistanceState(SOURCE_ID),
-    observation(100, 100),
+    observation("frame-100", 100),
   );
   state = reduceMetricDistanceState(state, { type: "provider-failure" });
-  state = accept(state, observation(1, 1));
+  state = accept(state, observation("video-frame:12345", 1));
 
   assert.equal(state.status, "approximate");
   assert.equal(state.unavailableReason, null);
@@ -250,14 +240,14 @@ test("each smoothing step is bounded by five centimeters or five percent", () =>
   for (let frame = 1; frame <= 12; frame += 1) {
     state = accept(
       state,
-      observation(frame, frame, {
+      observation(`frame-${frame}`, frame, {
         depthMeters: frame <= 8 ? 2 : 10,
       }),
     );
   }
 
   const previousDisplay = state.displayDepthMeters;
-  state = accept(state, observation(13, 13, { depthMeters: 10 }));
+  state = accept(state, observation("frame-13", 13, { depthMeters: 10 }));
   const limit = Math.max(0.05, 0.05 * state.medianDepthMeters);
 
   assert.ok(
