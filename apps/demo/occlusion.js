@@ -75,3 +75,43 @@ export function sampleMetricDepthProbe(linearZ, validity, width, height, normali
   const depthMeters = samples.length % 2 === 1 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
   return Object.freeze({ valid: true, centerX, centerY, sampleCount: samples.length, depthMeters });
 }
+
+export function trackMetricDepthSurface(linearZ, validity, width, height, normalizedX, normalizedY, targetDepthMeters, searchRadius = 16, maximumDepthDeltaMeters = 0.2) {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || linearZ.length !== width * height || validity.length !== linearZ.length) {
+    throw new TypeError('metric tracking buffers must match positive integer dimensions');
+  }
+  if (!Number.isFinite(normalizedX) || !Number.isFinite(normalizedY) || normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) {
+    throw new RangeError('metric tracking coordinates must be normalized');
+  }
+  if (!Number.isFinite(targetDepthMeters) || targetDepthMeters <= 0 || !Number.isSafeInteger(searchRadius) || searchRadius < 1 || !Number.isFinite(maximumDepthDeltaMeters) || maximumDepthDeltaMeters <= 0) {
+    throw new RangeError('metric tracking parameters are invalid');
+  }
+
+  const centerX = Math.min(width - 1, Math.floor(normalizedX * width));
+  const centerY = Math.min(height - 1, Math.floor(normalizedY * height));
+  let best = null;
+  for (let y = Math.max(0, centerY - searchRadius); y <= Math.min(height - 1, centerY + searchRadius); y += 1) {
+    for (let x = Math.max(0, centerX - searchRadius); x <= Math.min(width - 1, centerX + searchRadius); x += 1) {
+      const offsetX = x - centerX;
+      const offsetY = y - centerY;
+      const spatialDistance = Math.hypot(offsetX, offsetY);
+      if (spatialDistance > searchRadius) continue;
+      const index = y * width + x;
+      const depthMeters = Number(linearZ[index]);
+      const depthDeltaMeters = Math.abs(depthMeters - targetDepthMeters);
+      if (validity[index] !== 1 || !Number.isFinite(depthMeters) || depthMeters <= 0 || depthDeltaMeters > maximumDepthDeltaMeters) continue;
+      const score = depthDeltaMeters / maximumDepthDeltaMeters + 0.25 * spatialDistance / searchRadius;
+      if (best === null || score < best.score) best = { x, y, depthMeters, depthDeltaMeters, score };
+    }
+  }
+  if (best === null) return Object.freeze({ valid: false });
+  return Object.freeze({
+    valid: true,
+    x: best.x,
+    y: best.y,
+    normalizedX: (best.x + 0.5) / width,
+    normalizedY: (best.y + 0.5) / height,
+    depthMeters: best.depthMeters,
+    depthDeltaMeters: best.depthDeltaMeters
+  });
+}

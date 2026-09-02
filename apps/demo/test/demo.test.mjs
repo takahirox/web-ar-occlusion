@@ -12,6 +12,7 @@ import {
   isDiagnosticSphereFragmentOccluded,
   mapSphereRelativeDepthForDiagnosticOcclusion,
   sampleMetricDepthProbe,
+  trackMetricDepthSurface,
   updateMetricCrossing,
   updateMetricCrossingMask
 } from '../occlusion.js';
@@ -117,6 +118,8 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(html, /18 Hz · 480×270 · max age 200 ms/);
   assert.match(html, /Relative diagnostic/);
   assert.match(html, /Metric calibrated/);
+  assert.match(html, /Track objects/);
+  assert.match(html, /click an object to attach an approximate distance label/i);
   assert.match(html, /never calibrates normalized depth/);
   assert.match(html, /Camera pixels stay on this device/);
   for (const id of ['modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis', 'exitHysteresis', 'probeOverlay', 'probeControls', 'clearProbes', 'probeStatus', 'depthMode', 'calibrationStatus', 'provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
@@ -168,6 +171,8 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /values\.metricMode > \.5 && relativeDepthAt\(uv\) > \.5/);
   assert.match(script, /values\.metricMode < \.5 && relativeDepthAt\(uv\) > virtualRelativeDepth/);
   assert.match(script, /sampleMetricDepthProbe\(/);
+  assert.match(script, /trackMetricDepthSurface\(/);
+  assert.match(script, /tracking lost · no stale value/);
   assert.match(script, /state\.previewFlipped \? 1 - probe\.x : probe\.x/);
   assert.match(script, /metricLinearZ: application\.linearZ/);
   assert.match(script, /metricSourceFrameId === state\.depthFrame\?\.sourceFrameId/);
@@ -255,4 +260,20 @@ test('metric distance probes use a validity-aware ROI median and fail closed', (
   assert.deepEqual(sampleMetricDepthProbe(linearZ, new Uint8Array(9), 3, 3, 0.5, 0.5), { valid: false, centerX: 1, centerY: 1, sampleCount: 0 });
   assert.throws(() => sampleMetricDepthProbe(linearZ, validity, 2, 2, 0.5, 0.5), /buffers/);
   assert.throws(() => sampleMetricDepthProbe(linearZ, validity, 3, 3, -0.1, 0.5), /normalized/);
+});
+
+test('metric surface tracking follows a nearby matching depth and fails closed when lost', () => {
+  const width = 7;
+  const height = 5;
+  const linearZ = new Float32Array(width * height).fill(4);
+  const validity = new Uint8Array(width * height).fill(1);
+  linearZ[2 * width + 4] = 1.03;
+  const tracked = trackMetricDepthSurface(linearZ, validity, width, height, 2.5 / width, 2.5 / height, 1, 3, 0.15);
+  assert.equal(tracked.valid, true);
+  assert.equal(tracked.x, 4);
+  assert.equal(tracked.y, 2);
+  assert.ok(Math.abs(tracked.depthMeters - 1.03) < 1e-6);
+  assert.deepEqual(trackMetricDepthSurface(linearZ, validity, width, height, 2.5 / width, 2.5 / height, 2, 3, 0.1), { valid: false });
+  validity[2 * width + 4] = 0;
+  assert.deepEqual(trackMetricDepthSurface(linearZ, validity, width, height, 2.5 / width, 2.5 / height, 1, 3, 0.15), { valid: false });
 });

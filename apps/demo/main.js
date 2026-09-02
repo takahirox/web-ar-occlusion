@@ -8,6 +8,7 @@ import {
   DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
   DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
   sampleMetricDepthProbe,
+  trackMetricDepthSurface,
   updateMetricCrossingMask
 } from './occlusion.js';
 
@@ -43,6 +44,9 @@ const state = {
 const MAX_DISTANCE_PROBES = 6;
 const PROBE_HISTORY_LENGTH = 8;
 const PROBE_ROI_RADIUS = 2;
+const PROBE_SEARCH_RATIO = 0.06;
+const PROBE_MINIMUM_DEPTH_TOLERANCE_METERS = 0.12;
+const PROBE_DEPTH_TOLERANCE_RATIO = 0.12;
 
 function setLifecycle(value, message = value, error = false) {
   state.lifecycle = value;
@@ -92,11 +96,11 @@ function renderDistanceProbes() {
   const calibrated = state.calibrationModel !== null;
   const onButton = elements.probeControls.querySelector('button[data-probes="on"]');
   onButton.disabled = !calibrated;
-  onButton.title = calibrated ? 'Click the camera image to add a distance probe.' : 'Metric calibration is required before meters can be displayed.';
+  onButton.title = calibrated ? 'Click an object to attach and track an approximate distance label.' : 'Metric calibration is required before meters can be displayed.';
   elements.clearProbes.disabled = state.probes.length === 0;
   elements.stage.classList.toggle('probes-enabled', state.probesEnabled && calibrated);
   elements.probeStatus.textContent = state.probesEnabled
-    ? `${state.probes.length} probe${state.probes.length === 1 ? '' : 's'} · ${calibrated ? 'click image to add' : 'metric unavailable'}`
+    ? `${state.probes.length} tracked object${state.probes.length === 1 ? '' : 's'} · ${calibrated ? 'click image to add' : 'metric unavailable'}`
     : `off · ${calibrated ? 'metric ready' : 'metric calibration required'}`;
   elements.probeOverlay.replaceChildren();
   if (!state.probesEnabled) return;
@@ -109,11 +113,11 @@ function renderDistanceProbes() {
     const value = document.createElement('strong');
     const detail = document.createElement('small');
     if (probe.measurement) {
-      value.textContent = `P${probe.id} ≈ ${probe.measurement.median.toFixed(2)} m`;
-      detail.textContent = `now ${probe.measurement.current.toFixed(2)} · range ${probe.measurement.range.toFixed(2)} m`;
+      value.textContent = `≈ ${probe.measurement.median.toFixed(2)} m`;
+      detail.textContent = `P${probe.id} · ${probe.measurement.tracked ? 'tracking' : 'locked'} · now ${probe.measurement.current.toFixed(2)} · Δ${probe.measurement.range.toFixed(2)} m`;
     } else {
       value.textContent = `P${probe.id} —`;
-      detail.textContent = calibrated ? 'no valid current metric ROI' : 'metric calibration unavailable';
+      detail.textContent = !calibrated ? 'metric calibration unavailable' : probe.targetDepth !== null ? 'tracking lost · no stale value' : 'click a valid metric surface';
     }
     label.append(value, detail);
     elements.probeOverlay.append(label);
@@ -123,25 +127,49 @@ function renderDistanceProbes() {
 function invalidateProbeMeasurements(clearHistory = false) {
   for (const probe of state.probes) {
     probe.measurement = null;
-    if (clearHistory) probe.history = [];
+    if (clearHistory) {
+      probe.history = [];
+      probe.targetDepth = null;
+      probe.lostFrames = 0;
+    }
   }
   renderDistanceProbes();
 }
 
 function updateDistanceProbeMeasurement(probe, linearZ, validity, width, height) {
-  const depthX = state.previewFlipped ? 1 - probe.x : probe.x;
+  let depthX = state.previewFlipped ? 1 - probe.x : probe.x;
+  let tracked = false;
+  if (probe.targetDepth !== null) {
+    const searchRadius = Math.max(8, Math.round(Math.min(width, height) * PROBE_SEARCH_RATIO));
+    const maximumDepthDeltaMeters = Math.max(PROBE_MINIMUM_DEPTH_TOLERANCE_METERS, probe.targetDepth * PROBE_DEPTH_TOLERANCE_RATIO);
+    const tracking = trackMetricDepthSurface(linearZ, validity, width, height, depthX, probe.y, probe.targetDepth, searchRadius, maximumDepthDeltaMeters);
+    if (!tracking.valid) {
+      probe.measurement = null;
+      probe.lostFrames += 1;
+      if (probe.lostFrames === 1) probe.history = [];
+      return;
+    }
+    depthX = tracking.normalizedX;
+    probe.x = state.previewFlipped ? 1 - tracking.normalizedX : tracking.normalizedX;
+    probe.y = tracking.normalizedY;
+    tracked = true;
+  }
   const sample = sampleMetricDepthProbe(linearZ, validity, width, height, depthX, probe.y, PROBE_ROI_RADIUS);
   if (!sample.valid) {
     probe.measurement = null;
-    probe.history = [];
+    probe.lostFrames += 1;
+    if (probe.lostFrames === 1) probe.history = [];
     return;
   }
+  probe.targetDepth = sample.depthMeters;
+  probe.lostFrames = 0;
   probe.history.push(sample.depthMeters);
   if (probe.history.length > PROBE_HISTORY_LENGTH) probe.history.shift();
   probe.measurement = {
     current: sample.depthMeters,
     median: probeMedian(probe.history),
-    range: Math.max(...probe.history) - Math.min(...probe.history)
+    range: Math.max(...probe.history) - Math.min(...probe.history),
+    tracked
   };
 }
 
@@ -152,7 +180,7 @@ function updateDistanceProbeMeasurements(linearZ, validity, width, height) {
 
 function addDistanceProbe(x, y) {
   if (state.probes.length >= MAX_DISTANCE_PROBES) state.probes.shift();
-  const probe = { id: ++state.probeSequence, x, y, history: [], measurement: null };
+  const probe = { id: ++state.probeSequence, x, y, history: [], measurement: null, targetDepth: null, lostFrames: 0 };
   state.probes.push(probe);
   if (state.metricLinearZ && state.metricValidity && state.depthFrame) {
     updateDistanceProbeMeasurement(probe, state.metricLinearZ, state.metricValidity, state.depthFrame.width, state.depthFrame.height);
@@ -163,8 +191,7 @@ function addDistanceProbe(x, y) {
 function setDistanceProbesEnabled(enabled) {
   state.probesEnabled = enabled && state.calibrationModel !== null;
   selectButton(elements.probeControls, 'probes', state.probesEnabled ? 'on' : 'off');
-  if (state.probesEnabled && state.probes.length === 0) addDistanceProbe(0.5, 0.5);
-  else renderDistanceProbes();
+  renderDistanceProbes();
 }
 
 function clearMetricMask(reason) {
@@ -710,6 +737,7 @@ elements.orientationControls.addEventListener('click', ({ target }) => {
   const button = target.closest('button[data-flip]');
   if (!button) return;
   state.previewFlipped = button.dataset.flip === 'true';
+  for (const probe of state.probes) probe.x = 1 - probe.x;
   elements.stage.classList.toggle('flip-x', state.previewFlipped);
   selectButton(elements.orientationControls, 'flip', String(state.previewFlipped));
   for (const probe of state.probes) probe.history = [];

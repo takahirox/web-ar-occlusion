@@ -33,11 +33,11 @@ canvas { z-index: 2; pointer-events: none; }
 .stage.flip-x video, .stage.flip-x canvas { transform: scaleX(-1); }
 .stage.probes-enabled { cursor: crosshair; }
 .probe-overlay { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
-.probe-label { position: absolute; translate: -50% -100%; min-width: 94px; padding: 7px 9px; color: #eafff8; background: rgba(5, 18, 15, .9); border: 1px solid #64e2bc; border-radius: 9px; box-shadow: 0 5px 20px rgba(0,0,0,.38); text-align: center; font: 700 .76rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+.probe-label { position: absolute; translate: -50% -100%; min-width: 154px; padding: 10px 12px; color: #eafff8; background: rgba(5, 18, 15, .92); border: 1px solid #64e2bc; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.46); text-align: center; font: 800 .96rem ui-monospace, SFMono-Regular, Menlo, monospace; }
 .probe-label::after { content: ""; position: absolute; left: 50%; top: 100%; width: 8px; height: 8px; translate: -50% -50%; rotate: 45deg; background: #64e2bc; }
 .probe-label.invalid { color: #ffd8a8; border-color: #e4b557; }
 .probe-label.invalid::after { background: #e4b557; }
-.probe-label small { display: block; margin-top: 3px; color: #91aaa4; font-size: .56rem; font-weight: 600; white-space: nowrap; }
+.probe-label small { display: block; margin-top: 4px; color: #91aaa4; font-size: .62rem; font-weight: 650; white-space: nowrap; }
 .start-screen { position: absolute; z-index: 5; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center; padding: 28px; background: radial-gradient(circle, rgba(16,37,34,.92), rgba(5,10,10,.98)); transition: opacity .25s; }
 .start-screen.hidden { opacity: 0; pointer-events: none; }
 .start-screen p { color: #aebbb9; line-height: 1.55; max-width: 570px; margin: 8px 0 22px; }
@@ -56,6 +56,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .control-card legend { float: left; width: 100%; padding: 0; color: #8ea19d; font-size: .7rem; font-weight: 700; margin: 0 0 2px; }
 .control-card label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; min-width: 0; color: #c5d2cf; font-size: .72rem; font-weight: 650; }
 .control-card input { width: 100%; min-width: 0; padding: 8px 9px; color: #eef8f5; background: #0b1715; border: 1px solid #354b46; border-radius: 8px; font: 650 .78rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+.control-hint { color: #829792; font-size: .65rem; line-height: 1.4; }
 .control-card .secondary { width: 100%; align-self: stretch; }
 .control-view { grid-area: view; }
 .control-depth { grid-area: depth; }
