@@ -38,6 +38,7 @@ function assertUnavailable(state, reason, message) {
   assert.equal(state.medianDepthMeters, null);
   assert.deepEqual(state.observations, []);
   assert.equal(state.temporalRepeatability, 0);
+  assert.equal(state.guidance, "move-slowly-side-to-side");
   assert.ok(Object.isFrozen(state));
   assert.ok(Object.isFrozen(state.observations));
 }
@@ -53,6 +54,18 @@ test("starts without presenting a distance", () => {
   assert.equal(state.unavailableReason, null);
   assert.ok(Object.isFrozen(state));
   assert.ok(Object.isFrozen(state.observations));
+});
+
+test("first and second observations request side-to-side movement", () => {
+  let state = createMetricDistanceState(SOURCE_ID);
+
+  state = accept(state, observation("frame-1", 1));
+  assert.equal(state.status, "approximate");
+  assert.equal(state.guidance, "move-slowly-side-to-side");
+
+  state = accept(state, observation("frame-2", 2));
+  assert.equal(state.status, "approximate");
+  assert.equal(state.guidance, "move-slowly-side-to-side");
 });
 
 test("constant samples progress from approximate through refining to stable", () => {

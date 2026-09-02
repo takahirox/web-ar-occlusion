@@ -103,7 +103,10 @@ function unavailableState(
     horizontalEvidence: 0,
     temporalRepeatability: 0,
     consecutiveQualifyingWindows: 0,
-    guidance: "acquire-target",
+    guidance:
+      status === "starting"
+        ? "acquire-target"
+        : "move-slowly-side-to-side",
     unavailableReason,
   });
 }
@@ -167,7 +170,7 @@ function guidanceFor(
   if (status === "stable") {
     return "stable-repeatability-accuracy-unverified";
   }
-  if (count <= 2) return "keep-target-framed";
+  if (count <= 2) return "move-slowly-side-to-side";
   if (count < WINDOW_SIZE) return "move-slowly-side-to-side";
   if (stability < STABILITY_THRESHOLD) return "hold-steady-when-noisy";
   if (horizontalSpan < REQUIRED_HORIZONTAL_SPAN) {
