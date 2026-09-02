@@ -6,6 +6,12 @@ import { stripTypeScriptTypes } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { createDemoServer } from '../../../scripts/serve-demo.mjs';
+import {
+  DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
+  DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
+  isDiagnosticSphereFragmentOccluded,
+  mapSphereRelativeDepthForDiagnosticOcclusion
+} from '../occlusion.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const providerSource = resolve(root, '../../packages/depth-webgpu/src/index.ts');
@@ -41,7 +47,7 @@ async function withServer(run) {
 
 test('serves demo assets with correct MIME and no-store headers', async () => {
   await withServer(async (port) => {
-    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript']]) {
+    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript']]) {
       const response = await fetchLocal(port, path);
       assert.equal(response.status, 200);
       assert.match(response.headers['content-type'], new RegExp(`^${mime}`));
@@ -135,6 +141,12 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /new Float32Array\(\[0\]\)/);
   assert.match(script, /age <= profiles\[state\.active\]\.maxDepthAgeMs/);
 
+  assert.match(script, /from '\.\/occlusion\.js'/);
+  assert.match(script, /const diagnosticRelativeDepthHeadroom: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM\}/);
+  assert.match(script, /const diagnosticRelativeDepthCeiling: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_CEILING\}/);
+  assert.match(script, /mix\(\s*diagnosticRelativeDepthHeadroom,\s*diagnosticRelativeDepthCeiling,/);
+  assert.doesNotMatch(script, /relativeDepthAt\(uv\) >= virtualRelativeDepth/);
+
   assert.match(script, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(script, /getContext\('webgpu'\)/);
   assert.match(script, /requestAnimationFrame\(render\)/);
@@ -146,4 +158,39 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /visibilitychange/);
   assert.doesNotMatch(script, /state\.boundary|fakeMetricDepth|synthetic/i);
   assert.doesNotMatch(script, /activationMs/);
+});
+
+test('diagnostic mapping leaves endpoint headroom at the sphere center and rim', () => {
+  assert.equal(DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM, 0.05);
+  assert.equal(DIAGNOSTIC_RELATIVE_DEPTH_CEILING, 0.95);
+  const fragments = [
+    { name: 'rim', sphereRelativeDepth: 0, mappedDepth: DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM },
+    { name: 'center', sphereRelativeDepth: 1, mappedDepth: DIAGNOSTIC_RELATIVE_DEPTH_CEILING }
+  ];
+
+  for (const fragment of fragments) {
+    assert.ok(
+      Math.abs(mapSphereRelativeDepthForDiagnosticOcclusion(fragment.sphereRelativeDepth) - fragment.mappedDepth) < 1e-12,
+      `${fragment.name} maps to its documented diagnostic endpoint`
+    );
+    assert.equal(
+      isDiagnosticSphereFragmentOccluded(1, fragment.sphereRelativeDepth, true),
+      true,
+      `nearest valid depth occludes the ${fragment.name}`
+    );
+    assert.equal(
+      isDiagnosticSphereFragmentOccluded(0, fragment.sphereRelativeDepth, true),
+      false,
+      `far background does not occlude the ${fragment.name}`
+    );
+  }
+});
+
+test('diagnostic comparison preserves partial ordering and fails closed for invalid depth', () => {
+  assert.equal(isDiagnosticSphereFragmentOccluded(0.5, 0, true), true);
+  assert.equal(isDiagnosticSphereFragmentOccluded(0.5, 1, true), false);
+  for (const sphereRelativeDepth of [0, 1]) {
+    assert.equal(isDiagnosticSphereFragmentOccluded(1, sphereRelativeDepth, false), false);
+  }
+  assert.equal(isDiagnosticSphereFragmentOccluded(Number.NaN, 0, true), false);
 });

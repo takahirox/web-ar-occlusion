@@ -1,4 +1,8 @@
 import { DEPTH_MODEL_ID, DEPTH_MODEL_REVISION, TRANSFORMERS_JS_VERSION, WebGPUMonocularDepthProvider } from '/depth-webgpu.js';
+import {
+  DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
+  DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM
+} from './occlusion.js';
 
 const profiles = Object.freeze({
   performance: { hz: 8, width: 320, height: 192, maxDepthAgeMs: 250 },
@@ -188,6 +192,8 @@ struct Values {
 }
 @group(0) @binding(0) var<uniform> values: Values;
 @group(0) @binding(1) var depthTexture: texture_2d<f32>;
+const diagnosticRelativeDepthHeadroom: f32 = ${DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM};
+const diagnosticRelativeDepthCeiling: f32 = ${DIAGNOSTIC_RELATIVE_DEPTH_CEILING};
 
 @vertex fn vertexMain(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
   var positions = array<vec2f, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
@@ -220,7 +226,11 @@ fn relativeDepthAt(uv: vec2f) -> f32 {
   let diffuse = max(dot(normal, light), 0.);
   let rim = pow(1. - normal.z, 2.6);
   let color = vec3f(.28, .45, 1.) * (.28 + .72 * diffuse) + vec3f(.2, .95, .78) * rim;
-  let virtualRelativeDepth = clamp(z / radius, 0., 1.);
+  let virtualRelativeDepth = mix(
+    diagnosticRelativeDepthHeadroom,
+    diagnosticRelativeDepthCeiling,
+    clamp(z / radius, 0., 1.)
+  );
   if (values.view < .5 && values.depthValid > .5 && relativeDepthAt(uv) > virtualRelativeDepth) { discard; }
   return vec4f(color, .96);
 }`;
