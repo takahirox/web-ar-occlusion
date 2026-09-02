@@ -50,11 +50,23 @@ button:focus-visible { outline: 3px solid #89efd0; outline-offset: 3px; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .status-pill { position: absolute; z-index: 6; left: 16px; top: 16px; padding: 8px 11px; color: #c7d4d1; background: rgba(4,10,9,.75); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; font-size: .72rem; }
 .status-pill.error { color: #ffd0cb; border-color: #8e4038; background: rgba(66,15,12,.86); }
-.controls { display: grid; grid-template-columns: 1fr 1.55fr .9fr auto; gap: 18px; padding: 18px; align-items: end; }
+.controls { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-areas: "view view view view depth depth depth depth orientation orientation orientation orientation" "calibration calibration calibration calibration virtual virtual virtual virtual probes probes probes probes" "profile profile profile profile profile profile profile profile profile stop stop stop"; gap: 12px; padding: 16px; align-items: stretch; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-legend { color: #8ea19d; font-size: .7rem; font-weight: 700; margin: 0 0 8px; }
+.control-card { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 14px; border: 1px solid #20322f; border-radius: 14px; background: rgba(13, 28, 25, .72); }
+.control-card legend { float: left; width: 100%; padding: 0; color: #8ea19d; font-size: .7rem; font-weight: 700; margin: 0 0 2px; }
+.control-card label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; min-width: 0; color: #c5d2cf; font-size: .72rem; font-weight: 650; }
+.control-card input { width: 100%; min-width: 0; padding: 8px 9px; color: #eef8f5; background: #0b1715; border: 1px solid #354b46; border-radius: 8px; font: 650 .78rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+.control-card .secondary { width: 100%; align-self: stretch; }
+.control-view { grid-area: view; }
+.control-depth { grid-area: depth; }
+.control-calibration { grid-area: calibration; }
+.control-virtual { grid-area: virtual; }
+.control-profile { grid-area: profile; }
+.control-orientation { grid-area: orientation; }
+.control-probes { grid-area: probes; }
+.control-stop { grid-area: stop; width: 100%; align-self: stretch; }
 .segmented { display: flex; padding: 4px; gap: 3px; background: #101c1a; border: 1px solid #253633; border-radius: 12px; }
-.segmented button { flex: 1; min-width: 0; padding: 9px 11px; color: #91a19e; background: transparent; border-radius: 8px; font-size: .78rem; white-space: nowrap; }
+.segmented button { flex: 1; min-width: 0; padding: 9px 8px; color: #91a19e; background: transparent; border-radius: 8px; font-size: .76rem; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
 .segmented button[aria-pressed="true"] { color: #eafff8; background: #275c4f; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 .profiles button { display: grid; gap: 3px; text-align: left; }
 .profiles small { font-size: .62rem; opacity: .72; }
@@ -69,11 +81,15 @@ dd { margin: 7px 0 0; color: #e2eeeb; font: 600 .83rem ui-monospace, SFMono-Regu
 .notice { margin-top: 20px; padding: 17px 19px; border-left: 3px solid #e4b557; color: #adbbb8; background: rgba(67,49,18,.25); border-radius: 4px 12px 12px 4px; line-height: 1.55; font-size: .84rem; }
 .notice b { color: #f0d494; }
 
-@media (max-width: 850px) {
+@media (max-width: 980px) {
+  .controls { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-areas: "view view view depth depth depth" "calibration calibration calibration virtual virtual virtual" "orientation orientation orientation probes probes probes" "profile profile profile profile profile profile" "stop stop stop stop stop stop"; }
+}
+
+@media (max-width: 700px) {
   main { padding-top: 32px; }
   header { display: block; }
   header .badge { display: inline-block; margin-top: 18px; }
-  .controls { grid-template-columns: 1fr; }
+  .controls { grid-template-columns: minmax(0, 1fr); grid-template-areas: "view" "depth" "calibration" "virtual" "profile" "orientation" "probes" "stop"; padding: 10px; }
   .secondary { width: 100%; }
   .telemetry dl { grid-template-columns: repeat(2, 1fr); }
   .telemetry dl div:nth-child(4n) { border-right: 1px solid #20322f; }

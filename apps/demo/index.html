@@ -34,7 +34,7 @@
       </div>
 
       <div class="controls">
-        <fieldset>
+        <fieldset class="control-card control-view">
           <legend>View</legend>
           <div class="segmented" id="viewControls">
             <button type="button" data-view="occlusion" aria-pressed="true">Occlusion</button>
@@ -42,26 +42,26 @@
             <button type="button" data-view="mask" aria-pressed="false">Depth view</button>
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset class="control-card control-depth">
           <legend>Depth semantics</legend>
           <div class="segmented" id="modeControls">
             <button type="button" data-mode="relative" aria-pressed="true">Relative diagnostic</button>
             <button type="button" data-mode="metric" aria-pressed="false">Metric calibrated</button>
           </div>
         </fieldset>
-        <fieldset class="calibration-controls">
+        <fieldset class="control-card control-calibration">
           <legend>Known-plane calibration</legend>
           <label>Distance (m) <input id="anchorDistance" type="number" min="0.1" max="20" step="0.01" value="1"></label>
           <button class="secondary" id="captureAnchor" type="button" disabled>Capture center anchor</button>
           <button class="secondary" id="clearCalibration" type="button">Clear</button>
         </fieldset>
-        <fieldset class="calibration-controls">
+        <fieldset class="control-card control-virtual">
           <legend>Known virtual camera-space Z</legend>
           <label>Virtual Z (m) <input id="virtualZ" type="number" min="0.1" max="20" step="0.05" value="1.5"></label>
           <label>Entry hysteresis (m) <input id="entryHysteresis" type="number" min="0" max="1" step="0.01" value="0.03"></label>
           <label>Exit hysteresis (m) <input id="exitHysteresis" type="number" min="0" max="1" step="0.01" value="0.05"></label>
         </fieldset>
-        <fieldset>
+        <fieldset class="control-card control-profile">
           <legend>Requested profile</legend>
           <div class="segmented profiles" id="profileControls">
             <button type="button" data-profile="performance" aria-pressed="false"><b>Performance</b><small>8 Hz · 320×192 · max age 250 ms</small></button>
@@ -69,14 +69,14 @@
             <button type="button" data-profile="quality" aria-pressed="false"><b>Quality</b><small>18 Hz · 480×270 · max age 200 ms</small></button>
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset class="control-card control-orientation">
           <legend>Horizontal orientation</legend>
           <div class="segmented" id="orientationControls">
             <button type="button" data-flip="true" aria-pressed="true">Corrected</button>
             <button type="button" data-flip="false" aria-pressed="false">Raw</button>
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset class="control-card control-probes">
           <legend>Metric distance debug</legend>
           <div class="segmented" id="probeControls">
             <button type="button" data-probes="off" aria-pressed="true">Off</button>
@@ -84,7 +84,7 @@
           </div>
           <button class="secondary compact" id="clearProbes" type="button" disabled>Clear probes</button>
         </fieldset>
-        <button class="secondary" id="stop" type="button" disabled>Stop camera</button>
+        <button class="secondary control-stop" id="stop" type="button" disabled>Stop camera</button>
       </div>
     </section>
 

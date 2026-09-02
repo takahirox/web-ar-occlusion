@@ -172,6 +172,11 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /metricLinearZ: application\.linearZ/);
   assert.match(script, /metricSourceFrameId === state\.depthFrame\?\.sourceFrameId/);
   assert.match(style, /\.probe-label/);
+  assert.match(style, /\.controls \{[^}]*grid-template-columns: repeat\(12, minmax\(0, 1fr\)\)/s);
+  assert.match(style, /grid-template-areas: "view view view view depth depth depth depth orientation orientation orientation orientation"/);
+  assert.match(style, /@media \(max-width: 700px\)[\s\S]*grid-template-areas: "view" "depth" "calibration" "virtual" "profile" "orientation" "probes" "stop"/);
+  assert.match(style, /\.control-card input \{[^}]*width: 100%;[^}]*min-width: 0;/s);
+  assert.match(style, /white-space: normal; overflow-wrap: anywhere/);
   assert.match(script, /const diagnosticRelativeDepthHeadroom: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM\}/);
   assert.match(script, /const diagnosticRelativeDepthCeiling: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_CEILING\}/);
   assert.match(script, /mix\(\s*diagnosticRelativeDepthHeadroom,\s*diagnosticRelativeDepthCeiling,/);
