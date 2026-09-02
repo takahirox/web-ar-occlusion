@@ -66,6 +66,7 @@ export function captureKnownPlaneAnchor(input: {
   readonly expectedCaptureTimestamp: number;
   readonly x: number;
   readonly y: number;
+  readonly radius?: number;
   readonly distanceMeters: number;
   readonly minimumDistanceMeters?: number;
   readonly maximumDistanceMeters?: number;
@@ -80,9 +81,20 @@ export function captureKnownPlaneAnchor(input: {
   if (!Number.isSafeInteger(input.frame.width) || !Number.isSafeInteger(input.frame.height) || input.frame.width <= 0 || input.frame.height <= 0 || input.frame.rawInverseDepth.length !== input.frame.width * input.frame.height) throw new TypeError("raw depth dimensions are invalid");
   if (input.frame.sourceFrameId !== input.expectedSourceFrameId || input.frame.captureTimestamp !== input.expectedCaptureTimestamp) throw new Error("anchor source association mismatch");
   if (!Number.isSafeInteger(input.x) || !Number.isSafeInteger(input.y) || input.x < 0 || input.y < 0 || input.x >= input.frame.width || input.y >= input.frame.height) throw new RangeError("anchor coordinate is outside the source frame");
+  const radius = input.radius ?? 0;
+  if (!Number.isSafeInteger(radius) || radius < 0) throw new RangeError("anchor radius must be a non-negative integer");
   if (input.distanceMeters < minimum || input.distanceMeters > maximum) throw new RangeError("known distance is outside the audited range");
-  const rawInverseDepth = Number(input.frame.rawInverseDepth[input.y * input.frame.width + input.x]);
-  finite(rawInverseDepth, "raw anchor depth");
+  const samples: number[] = [];
+  for (let y = Math.max(0, input.y - radius); y <= Math.min(input.frame.height - 1, input.y + radius); y += 1) {
+    for (let x = Math.max(0, input.x - radius); x <= Math.min(input.frame.width - 1, input.x + radius); x += 1) {
+      const value = Number(input.frame.rawInverseDepth[y * input.frame.width + x]);
+      if (Number.isFinite(value)) samples.push(value);
+    }
+  }
+  samples.sort((left, right) => left - right);
+  if (samples.length === 0) throw new TypeError("raw anchor depth must contain a finite ROI sample");
+  const middle = Math.floor(samples.length / 2);
+  const rawInverseDepth = samples.length % 2 === 1 ? samples[middle]! : (samples[middle - 1]! + samples[middle]!) / 2;
   return Object.freeze({ id: input.id, sourceId: input.frame.sourceId, sourceFrameId: input.frame.sourceFrameId, captureTimestamp: input.frame.captureTimestamp, rawInverseDepth, distanceMeters: input.distanceMeters });
 }
 
@@ -113,7 +125,18 @@ export function fitKnownPlaneCalibration(anchors: readonly KnownPlaneAnchor[], o
 }
 
 export type MetricCalibrationApplication =
-  | { readonly usable: true; readonly state: "calibrated"; readonly linearZ: Float32Array; readonly validity: Uint8Array }
+  | {
+      readonly usable: true;
+      readonly state: "calibrated";
+      readonly sourceId: string;
+      readonly sourceFrameId: string;
+      readonly captureTimestamp: number;
+      readonly representation: "linear-z";
+      readonly scale: "metric";
+      readonly unit: "meter";
+      readonly linearZ: Float32Array;
+      readonly validity: Uint8Array;
+    }
   | { readonly usable: false; readonly state: "lost"; readonly reason: string };
 
 export function applyKnownPlaneCalibration(frame: RawDepthFrameEvidence, model: Readonly<MetricCalibrationModel>, nowTimestamp: number): MetricCalibrationApplication {
@@ -122,8 +145,10 @@ export function applyKnownPlaneCalibration(frame: RawDepthFrameEvidence, model: 
   finite(frame.captureTimestamp, "capture timestamp");
   finite(nowTimestamp, "application timestamp");
   if (frame.sourceId !== model.sourceId) return { usable: false, state: "lost", reason: "source-mismatch" };
-  if (nowTimestamp < frame.captureTimestamp || nowTimestamp - model.newestAnchorTimestamp > model.maximumApplicationAgeMs) return { usable: false, state: "lost", reason: "calibration-stale" };
-  if (frame.rawInverseDepth.length !== frame.width * frame.height) return { usable: false, state: "lost", reason: "depth-dimension-mismatch" };
+  if (nowTimestamp < frame.captureTimestamp) return { usable: false, state: "lost", reason: "source-frame-from-future" };
+  if (nowTimestamp - frame.captureTimestamp > model.maximumApplicationAgeMs) return { usable: false, state: "lost", reason: "source-frame-stale" };
+  if (nowTimestamp - model.newestAnchorTimestamp > model.maximumApplicationAgeMs) return { usable: false, state: "lost", reason: "calibration-stale" };
+  if (!Number.isSafeInteger(frame.width) || !Number.isSafeInteger(frame.height) || frame.width <= 0 || frame.height <= 0 || frame.rawInverseDepth.length !== frame.width * frame.height) return { usable: false, state: "lost", reason: "depth-dimension-mismatch" };
   const linearZ = new Float32Array(frame.rawInverseDepth.length);
   const validity = new Uint8Array(frame.rawInverseDepth.length);
   for (let index = 0; index < linearZ.length; index += 1) {
@@ -132,5 +157,16 @@ export function applyKnownPlaneCalibration(frame: RawDepthFrameEvidence, model: 
     const z = 1 / inverseMeters;
     if (Number.isFinite(raw) && Number.isFinite(z) && inverseMeters > 0 && z >= model.minimumDistanceMeters && z <= model.maximumDistanceMeters) { linearZ[index] = z; validity[index] = 1; }
   }
-  return { usable: true, state: "calibrated", linearZ, validity };
+  return {
+    usable: true,
+    state: "calibrated",
+    sourceId: frame.sourceId,
+    sourceFrameId: frame.sourceFrameId,
+    captureTimestamp: frame.captureTimestamp,
+    representation: "linear-z",
+    scale: "metric",
+    unit: "meter",
+    linearZ,
+    validity
+  };
 }

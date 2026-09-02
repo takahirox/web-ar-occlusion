@@ -1,7 +1,13 @@
 import { DEPTH_MODEL_ID, DEPTH_MODEL_REVISION, TRANSFORMERS_JS_VERSION, WebGPUMonocularDepthProvider } from '/depth-webgpu.js';
 import {
+  applyKnownPlaneCalibration,
+  captureKnownPlaneAnchor,
+  fitKnownPlaneCalibration
+} from '/metric-calibration.js';
+import {
   DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
-  DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM
+  DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
+  updateMetricCrossingMask
 } from './occlusion.js';
 
 const profiles = Object.freeze({
@@ -12,18 +18,22 @@ const profiles = Object.freeze({
 
 const elements = Object.fromEntries([
   'camera', 'gpu', 'stage', 'startScreen', 'start', 'stop', 'status', 'viewControls', 'orientationControls',
-  'profileControls', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid',
-  'cameraSize', 'viewMode', 'lifecycle', 'provider', 'backend', 'model'
+  'modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis',
+  'exitHysteresis', 'depthMode', 'calibrationStatus', 'profileControls', 'profiles', 'fps', 'inference',
+  'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle', 'provider', 'backend', 'model'
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
   lifecycle: 'idle', stream: null, generation: 0, requested: 'balanced', active: 'balanced',
-  view: 'occlusion', previewFlipped: true, device: null, context: null, pipeline: null, uniformBuffer: null,
-  bindGroup: null, placeholderDepth: null, depthFrame: null, depthValid: false,
-  depthReason: 'no result', provider: null, providerState: 'idle', animation: 0,
+  view: 'occlusion', mode: 'relative', previewFlipped: true, device: null, context: null, pipeline: null,
+  uniformBuffer: null, bindGroup: null, placeholderDepth: null, depthFrame: null, depthValid: false,
+  depthReason: 'no result', provider: null, providerState: 'idle', animation: 0, sourceId: null,
   inferenceTimer: 0, inferencePending: false, inferenceRequest: 0, acceptedRequest: 0,
   inferenceCount: 0, inferenceWindowCount: 0, inferenceRate: 0, lastDepthTimestamp: 0,
   profileGeneration: 0, fpsFrames: 0, fps: 0, lastFpsSample: performance.now(),
+  anchors: [], anchorSequence: 0, pendingAnchorDistance: null, calibrationModel: null,
+  calibrationReason: 'relative-only', metricTexture: null, metricMask: null,
+  metricSourceFrameId: null, metricCaptureTimestamp: null,
   cleanup: Promise.resolve()
 };
 
@@ -65,23 +75,35 @@ function setDepthInput(texture) {
   });
 }
 
+function clearMetricMask(reason) { state.metricTexture?.destroy(); state.metricTexture = null; state.metricMask = null; state.metricSourceFrameId = null; state.metricCaptureTimestamp = null; if (state.mode === 'metric' && state.placeholderDepth) setDepthInput(state.placeholderDepth); if (reason) state.depthReason = reason; }
+function clearMetricCalibration(reason = 'cleared') { clearMetricMask(reason); state.anchors = []; state.pendingAnchorDistance = null; state.calibrationModel = null; state.calibrationReason = reason; }
+function supersedeDepth() { state.depthFrame?.depth.destroy(); state.depthFrame = null; state.metricTexture?.destroy(); state.metricTexture = null; state.metricSourceFrameId = null; state.metricCaptureTimestamp = null; }
+function updateCalibrationControls() { const calibrated = state.calibrationModel !== null; const metricButton = elements.modeControls.querySelector('button[data-mode="metric"]'); metricButton.disabled = !calibrated; metricButton.title = calibrated ? '' : 'Capture at least two distinct known distances first.'; elements.captureAnchor.disabled = state.lifecycle !== 'running' || state.provider?.state !== 'ready' || state.pendingAnchorDistance !== null; elements.depthMode.textContent = state.mode === 'metric' ? 'metric · linear-z · meter' : 'relative diagnostic'; elements.calibrationStatus.textContent = calibrated ? `calibrated · ${state.anchors.length} anchors · RMSE ${state.calibrationModel.inverseDepthRmse.toFixed(4)} 1/m` : `${state.calibrationReason} · ${state.anchors.length} anchors`; }
+function metricEvidence(result) { return { sourceId: state.sourceId, sourceFrameId: result.sourceFrameId, captureTimestamp: result.captureTimestamp, rawInverseDepth: result.rawInverseDepth, width: result.width, height: result.height }; }
+function numericControl(element, minimum, maximum, label) { const value = Number(element.value); if (!Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`${label} is outside its allowed range.`); return value; }
+function uploadMetricMask(mask, width, height) { const bytesPerRow = Math.ceil(width / 256) * 256; const padded = new Uint8Array(bytesPerRow * height); for (let row = 0; row < height; row += 1) padded.set(mask.subarray(row * width, (row + 1) * width), row * bytesPerRow); const texture = state.device.createTexture({ label: 'metric-crossing-mask', size: { width, height, depthOrArrayLayers: 1 }, format: 'r8unorm', usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING }); try { state.device.queue.writeTexture({ texture }, padded, { bytesPerRow, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 }); return texture; } catch (error) { texture.destroy(); throw error; } }
+function updateMetricResult(result) { const frame = metricEvidence(result); if (state.pendingAnchorDistance !== null) { const distanceMeters = state.pendingAnchorDistance; state.pendingAnchorDistance = null; try { const anchor = captureKnownPlaneAnchor({ id: `anchor-${++state.anchorSequence}`, frame, expectedSourceFrameId: result.sourceFrameId, expectedCaptureTimestamp: result.captureTimestamp, x: Math.floor(result.width / 2), y: Math.floor(result.height / 2), radius: 2, distanceMeters }); state.anchors.push(anchor); const distinctDistances = new Set(state.anchors.map((item) => item.distanceMeters)).size; const distinctRaw = new Set(state.anchors.map((item) => item.rawInverseDepth)).size; if (distinctDistances < 2 || distinctRaw < 2) { state.calibrationModel = null; state.calibrationReason = 'distinct-distance-and-raw-anchors-required'; } else { const fit = fitKnownPlaneCalibration(state.anchors, { nowTimestamp: result.captureTimestamp }); state.calibrationModel = fit.valid ? fit.model : null; state.calibrationReason = fit.valid ? 'calibrated' : fit.reason; } } catch (error) { state.calibrationModel = null; state.calibrationReason = error?.message || 'anchor-rejected'; } return; } if (!state.calibrationModel) return; const application = applyKnownPlaneCalibration(frame, state.calibrationModel, performance.now()); if (!application.usable) { clearMetricCalibration(application.reason); return; } if (application.sourceId !== state.sourceId || application.sourceFrameId !== result.sourceFrameId || application.captureTimestamp !== result.captureTimestamp || application.representation !== 'linear-z' || application.scale !== 'metric' || application.unit !== 'meter') { clearMetricCalibration('metric-source-association-mismatch'); return; } try { const mask = updateMetricCrossingMask(state.metricMask, application.linearZ, application.validity, numericControl(elements.virtualZ, 0.1, 20, 'Virtual Z'), numericControl(elements.entryHysteresis, 0, 1, 'Entry hysteresis'), numericControl(elements.exitHysteresis, 0, 1, 'Exit hysteresis')); const texture = uploadMetricMask(mask, result.width, result.height); state.metricTexture?.destroy(); state.metricTexture = texture; state.metricMask = mask; state.metricSourceFrameId = result.sourceFrameId; state.metricCaptureTimestamp = result.captureTimestamp; } catch (error) { clearMetricMask(error?.message || 'metric-mask-rejected'); } }
+
 function invalidateDepth(reason, destroy = true) {
   state.depthValid = false;
   state.depthReason = reason;
+  clearMetricMask(reason);
   if (state.depthFrame && destroy) state.depthFrame.depth.destroy();
   state.depthFrame = null;
   if (state.placeholderDepth) setDepthInput(state.placeholderDepth);
 }
 
 function refreshDepthValidity(now = performance.now()) {
+  if (state.calibrationModel && now - state.calibrationModel.newestAnchorTimestamp > state.calibrationModel.maximumApplicationAgeMs) clearMetricCalibration('calibration-stale');
   const age = depthAge(now);
-  const valid = state.lifecycle === 'running' && state.provider?.state === 'ready' &&
+  const baseValid = state.lifecycle === 'running' && state.provider?.state === 'ready' &&
     state.depthFrame !== null && age !== null && age <= profiles[state.active].maxDepthAgeMs;
-  if (!valid && state.depthFrame && age !== null && age > profiles[state.active].maxDepthAgeMs) {
+  if (!baseValid && state.depthFrame && age !== null && age > profiles[state.active].maxDepthAgeMs) {
     invalidateDepth('stale');
-  } else {
-    state.depthValid = valid;
+    return false;
   }
+  const metricAssociated = state.metricTexture !== null && state.calibrationModel !== null && state.metricSourceFrameId === state.depthFrame?.sourceFrameId && state.metricCaptureTimestamp === state.depthFrame?.captureTimestamp;
+  state.depthValid = baseValid && (state.mode === 'relative' || metricAssociated);
   return state.depthValid;
 }
 
@@ -97,8 +119,10 @@ function updateTelemetry(now = performance.now()) {
   elements.depthValid.textContent = String(valid);
   elements.cameraSize.textContent = state.stream ? `${elements.camera.videoWidth || 0}×${elements.camera.videoHeight || 0}` : 'off';
   elements.viewMode.textContent = state.view;
+  updateCalibrationControls();
   if (state.lifecycle === 'running') {
-    elements.status.textContent = valid ? 'Running · real relative depth' : `Running · no valid depth (${state.depthReason})`;
+    const semantics = state.mode === 'metric' ? 'calibrated metric mask' : 'real relative depth';
+    elements.status.textContent = valid ? `Running · ${semantics}` : `Running · zero occlusion (${state.depthReason})`;
     elements.status.classList.remove('error');
   }
 }
@@ -143,21 +167,26 @@ function runInference(generation) {
       throw new Error('Depth result did not match its captured source frame or relative-depth contract.');
     }
     result.confidence?.destroy();
-    invalidateDepth('superseded');
+    supersedeDepth();
     state.depthFrame = result;
     state.lastDepthTimestamp = result.captureTimestamp;
     state.acceptedRequest = requestId;
     state.inferenceCount += 1;
     state.inferenceWindowCount += 1;
     state.depthReason = 'valid';
-    state.depthValid = true;
-    setDepthInput(result.depth);
+    updateMetricResult(result);
+    if (state.mode === 'relative') setDepthInput(result.depth);
+    else if (state.metricTexture && state.metricSourceFrameId === result.sourceFrameId && state.metricCaptureTimestamp === result.captureTimestamp) setDepthInput(state.metricTexture);
+    else setDepthInput(state.placeholderDepth);
     updateTelemetry();
   }).catch((error) => {
     if (error?.name !== 'AbortError') handleInferenceFailure(error, generation);
   }).finally(() => {
     videoFrame.close();
-    if (generation === state.generation) state.inferencePending = false;
+    if (generation === state.generation) {
+      state.inferencePending = false;
+      updateTelemetry();
+    }
   });
 }
 
@@ -176,6 +205,7 @@ function requestProfile(name) {
   state.provider?.abort();
   state.inferenceWindowCount = 0;
   state.lastDepthTimestamp = 0;
+  clearMetricCalibration('profile changed');
   invalidateDepth('profile changed');
   scheduleInference();
   updateTelemetry();
@@ -188,7 +218,8 @@ struct Values {
   aspect: f32,
   depthValid: f32,
   canvasSize: vec2f,
-  pad: vec2f
+  metricMode: f32,
+  pad: f32
 }
 @group(0) @binding(0) var<uniform> values: Values;
 @group(0) @binding(1) var depthTexture: texture_2d<f32>;
@@ -210,8 +241,8 @@ fn relativeDepthAt(uv: vec2f) -> f32 {
   let uv = position.xy / values.canvasSize;
   if (values.view > 1.5) {
     if (values.depthValid < .5) { return vec4f(0.); }
-    let relativeDepth = relativeDepthAt(uv);
-    return vec4f(vec3f(relativeDepth), 1.);
+    let depthOrMask = relativeDepthAt(uv);
+    return vec4f(vec3f(depthOrMask), 1.);
   }
   var p = uv * 2. - 1.;
   p.x *= values.aspect;
@@ -231,7 +262,10 @@ fn relativeDepthAt(uv: vec2f) -> f32 {
     diagnosticRelativeDepthCeiling,
     clamp(z / radius, 0., 1.)
   );
-  if (values.view < .5 && values.depthValid > .5 && relativeDepthAt(uv) > virtualRelativeDepth) { discard; }
+  if (values.view < .5 && values.depthValid > .5) {
+    if (values.metricMode > .5 && relativeDepthAt(uv) > .5) { discard; }
+    if (values.metricMode < .5 && relativeDepthAt(uv) > virtualRelativeDepth) { discard; }
+  }
   return vec4f(color, .96);
 }`;
 
@@ -300,7 +334,7 @@ function render(now) {
   const valid = refreshDepthValidity(now);
   const values = new Float32Array([
     view, now / 1000, elements.gpu.width / elements.gpu.height, valid ? 1 : 0,
-    elements.gpu.width, elements.gpu.height, 0, 0
+    elements.gpu.width, elements.gpu.height, state.mode === 'metric' ? 1 : 0, 0
   ]);
   state.device.queue.writeBuffer(state.uniformBuffer, 0, values);
   const encoder = state.device.createCommandEncoder();
@@ -356,6 +390,11 @@ async function startCamera() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
     if (generation !== state.generation) { stream.getTracks().forEach((track) => track.stop()); return; }
     state.stream = stream;
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack?.id) throw new Error('Camera returned no stable video track identity.');
+    const sourceId = `camera-track:${videoTrack.id}`;
+    if (state.sourceId !== sourceId) clearMetricCalibration('source changed');
+    state.sourceId = sourceId;
     for (const track of stream.getTracks()) {
       track.addEventListener('ended', () => {
         if (generation !== state.generation || state.lifecycle !== 'running') return;
@@ -408,6 +447,7 @@ function stopCamera(showScreen = true) {
   const context = state.context;
   const uniformBuffer = state.uniformBuffer;
   const placeholderDepth = state.placeholderDepth;
+  clearMetricCalibration('stopped');
   invalidateDepth('stopped');
   provider?.stop();
   context?.unconfigure();
@@ -420,7 +460,7 @@ function stopCamera(showScreen = true) {
     stream: null, device: null, context: null, pipeline: null, uniformBuffer: null,
     bindGroup: null, placeholderDepth: null, provider: null, providerState: 'stopped',
     depthFrame: null, depthValid: false, inferencePending: false, lastDepthTimestamp: 0,
-    inferenceRate: 0
+    inferenceRate: 0, sourceId: null
   });
   if (showScreen) {
     elements.startScreen.classList.remove('hidden');
@@ -434,6 +474,11 @@ function stopCamera(showScreen = true) {
 
 elements.start.addEventListener('click', startCamera);
 elements.stop.addEventListener('click', () => stopCamera());
+elements.modeControls.addEventListener('click', ({ target }) => { const button = target.closest('button[data-mode]'); if (!button || button.disabled || button.dataset.mode === state.mode) return; clearMetricMask('mode changed'); state.mode = button.dataset.mode; selectButton(elements.modeControls, 'mode', state.mode); setDepthInput(state.mode === 'relative' && state.depthFrame ? state.depthFrame.depth : state.placeholderDepth); updateTelemetry(); });
+elements.captureAnchor.addEventListener('click', () => { try { state.pendingAnchorDistance = numericControl(elements.anchorDistance, 0.1, 20, 'Known distance'); state.calibrationReason = 'awaiting exact accepted source frame'; clearMetricMask('awaiting calibration anchor'); } catch (error) { state.calibrationReason = error?.message || 'invalid known distance'; } updateTelemetry(); });
+elements.clearCalibration.addEventListener('click', () => { clearMetricCalibration('cleared'); updateTelemetry(); });
+for (const control of [elements.virtualZ, elements.entryHysteresis, elements.exitHysteresis]) control.addEventListener('input', () => { clearMetricMask('metric controls changed'); updateTelemetry(); });
+
 elements.viewControls.addEventListener('click', ({ target }) => {
   const button = target.closest('button[data-view]');
   if (!button) return;

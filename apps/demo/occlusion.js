@@ -39,7 +39,7 @@ export function updateMetricCrossingMask(previous, linearZ, validity, virtualZ, 
   const output = new Uint8Array(linearZ.length);
   for (let index = 0; index < output.length; index += 1) {
     output[index] = updateMetricCrossing(
-      previous?.[index] === 1,
+      (previous?.[index] ?? 0) !== 0,
       linearZ[index],
       virtualZ,
       entryHysteresis,

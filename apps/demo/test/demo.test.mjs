@@ -118,7 +118,7 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(html, /Metric calibrated/);
   assert.match(html, /never calibrates normalized depth/);
   assert.match(html, /Camera pixels stay on this device/);
-  for (const id of ['provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
+  for (const id of ['modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis', 'exitHysteresis', 'depthMode', 'calibrationStatus', 'provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
 
@@ -139,12 +139,33 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /var depthTexture: texture_2d<f32>/);
   assert.match(script, /textureLoad\(depthTexture/);
   assert.match(script, /values\.depthValid < \.5/);
-  assert.match(script, /values\.depthValid > \.5 && relativeDepthAt\(uv\)/);
+  assert.match(script, /values\.view < \.5 && values\.depthValid > \.5/);
   assert.match(script, /fail-closed-no-depth/);
   assert.match(script, /new Float32Array\(\[0\]\)/);
   assert.match(script, /age <= profiles\[state\.active\]\.maxDepthAgeMs/);
 
   assert.match(script, /from '\.\/occlusion\.js'/);
+  assert.match(script, /from '\/metric-calibration\.js'/);
+  assert.match(script, /captureKnownPlaneAnchor\(/);
+  assert.match(script, /fitKnownPlaneCalibration\(/);
+  assert.match(script, /applyKnownPlaneCalibration\(/);
+  assert.match(script, /updateMetricCrossingMask\(/);
+  assert.match(script, /rawInverseDepth: result\.rawInverseDepth/);
+  assert.match(script, /camera-track:\$\{videoTrack\.id\}/);
+  assert.match(script, /expectedSourceFrameId: result\.sourceFrameId/);
+  assert.match(script, /expectedCaptureTimestamp: result\.captureTimestamp/);
+  assert.match(script, /radius: 2/);
+  assert.match(script, /distinctDistances < 2 \|\| distinctRaw < 2/);
+  assert.match(script, /format: 'r8unorm'/);
+  assert.match(script, /bytesPerRow = Math\.ceil\(width \/ 256\) \* 256/);
+  assert.match(script, /queue\.writeTexture\(\{ texture \}, padded/);
+  assert.match(script, /state\.metricTexture\?\.destroy\(\)/);
+  assert.match(script, /clearMetricCalibration\('profile changed'\)/);
+  assert.match(script, /clearMetricCalibration\('stopped'\)/);
+  assert.match(script, /button\.disabled \|\| button\.dataset\.mode === state\.mode/);
+  assert.match(script, /application\.representation !== 'linear-z'/);
+  assert.match(script, /values\.metricMode > \.5 && relativeDepthAt\(uv\) > \.5/);
+  assert.match(script, /values\.metricMode < \.5 && relativeDepthAt\(uv\) > virtualRelativeDepth/);
   assert.match(script, /const diagnosticRelativeDepthHeadroom: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM\}/);
   assert.match(script, /const diagnosticRelativeDepthCeiling: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_CEILING\}/);
   assert.match(script, /mix\(\s*diagnosticRelativeDepthHeadroom,\s*diagnosticRelativeDepthCeiling,/);
@@ -209,6 +230,7 @@ test('metric crossing uses strict realZ < virtualZ with temporal entry and exit 
 test('metric crossing mask preserves per-pixel temporal state and fails closed', () => {
   const entered = updateMetricCrossingMask(null, new Float32Array([1, 2, 1]), new Uint8Array([1, 1, 0]), 1.5, 0.05, 0.1);
   assert.deepEqual([...entered], [255, 0, 0]);
-  const retained = updateMetricCrossingMask(new Uint8Array([1, 0, 1]), new Float32Array([1.55, 1, 1]), new Uint8Array([1, 1, 0]), 1.5, 0.05, 0.1);
+  const retained = updateMetricCrossingMask(entered, new Float32Array([1.55, 1, 1]), new Uint8Array([1, 1, 0]), 1.5, 0.05, 0.1);
   assert.deepEqual([...retained], [255, 255, 0]);
+  assert.deepEqual([...updateMetricCrossingMask(retained, new Float32Array([2, 2, 2]), new Uint8Array([0, 0, 0]), 1.5, 0.05, 0.1)], [0, 0, 0]);
 });

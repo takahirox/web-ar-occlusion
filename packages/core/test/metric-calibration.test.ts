@@ -13,8 +13,10 @@ function anchor(id: string, rawInverseDepth: number, distanceMeters: number, cap
 test("captures only exact source-associated finite raw evidence", () => {
   const evidence = frame();
   assert.deepEqual(captureKnownPlaneAnchor({ id: "a", frame: evidence, expectedSourceFrameId: "frame-1", expectedCaptureTimestamp: 1000, x: 1, y: 0, distanceMeters: 2 }), { id: "a", sourceId: "camera-1", sourceFrameId: "frame-1", captureTimestamp: 1000, rawInverseDepth: 2, distanceMeters: 2 });
+  assert.deepEqual(captureKnownPlaneAnchor({ id: "roi", frame: frame("camera-1", "frame-1", 1000, [1, NaN, 100, 3]), expectedSourceFrameId: "frame-1", expectedCaptureTimestamp: 1000, x: 0, y: 0, radius: 1, distanceMeters: 2 }).rawInverseDepth, 3);
   assert.throws(() => captureKnownPlaneAnchor({ id: "a", frame: evidence, expectedSourceFrameId: "other", expectedCaptureTimestamp: 1000, x: 0, y: 0, distanceMeters: 1 }), /association mismatch/);
-  assert.throws(() => captureKnownPlaneAnchor({ id: "a", frame: frame("camera-1", "frame-1", 1000, [NaN, 2, 3, 4]), expectedSourceFrameId: "frame-1", expectedCaptureTimestamp: 1000, x: 0, y: 0, distanceMeters: 1 }), /must be finite/);
+  assert.throws(() => captureKnownPlaneAnchor({ id: "a", frame: frame("camera-1", "frame-1", 1000, [NaN, 2, 3, 4]), expectedSourceFrameId: "frame-1", expectedCaptureTimestamp: 1000, x: 0, y: 0, distanceMeters: 1 }), /finite ROI sample/);
+  assert.throws(() => captureKnownPlaneAnchor({ id: "empty", frame: frame("camera-1", "frame-1", 1000, [NaN, NaN, NaN, NaN]), expectedSourceFrameId: "frame-1", expectedCaptureTimestamp: 1000, x: 0, y: 0, radius: 1, distanceMeters: 1 }), /finite ROI sample/);
 });
 
 test("deterministically fits and applies 1 over z equals a d plus b", () => {
@@ -36,6 +38,12 @@ test("deterministically fits and applies 1 over z equals a d plus b", () => {
   assert.ok(Math.abs(applied.linearZ[1]! - 4 / 3) < 1e-6);
   assert.ok(Math.abs(applied.linearZ[2]! - 1) < 1e-6);
   assert.equal(applied.linearZ[3], 0);
+  assert.equal(applied.sourceId, "camera-1");
+  assert.equal(applied.sourceFrameId, "next");
+  assert.equal(applied.captureTimestamp, 1001);
+  assert.equal(applied.representation, "linear-z");
+  assert.equal(applied.scale, "metric");
+  assert.equal(applied.unit, "meter");
 });
 
 test("rejects bad range, residual, direction, stale and mismatched evidence", () => {
@@ -53,4 +61,6 @@ test("requires two anchors and fails closed when application is stale or from an
   if (!fit.valid) return;
   assert.deepEqual(applyKnownPlaneCalibration(frame("camera-2", "next", 1001), fit.model, 1001), { usable: false, state: "lost", reason: "source-mismatch" });
   assert.deepEqual(applyKnownPlaneCalibration(frame("camera-1", "next", 1011), fit.model, 1011), { usable: false, state: "lost", reason: "calibration-stale" });
+  assert.deepEqual(applyKnownPlaneCalibration(frame("camera-1", "old", 1001), fit.model, 1012), { usable: false, state: "lost", reason: "source-frame-stale" });
+  assert.deepEqual(applyKnownPlaneCalibration(frame("camera-1", "future", 1012), fit.model, 1011), { usable: false, state: "lost", reason: "source-frame-from-future" });
 });

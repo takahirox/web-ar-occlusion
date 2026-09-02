@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-export interface RecordedMetricFrame { readonly id: string; readonly predictedLinearZ: readonly (number | null)[]; readonly referenceLinearZ: readonly (number | null)[]; }
+export interface RecordedMetricFrame { readonly id: string; readonly sourceId: string; readonly sourceFrameId: string; readonly captureTimestamp: number; readonly predictedLinearZ: readonly (number | null)[]; readonly referenceLinearZ: readonly (number | null)[]; }
 export interface RecordedMetricEvaluationInput { readonly schemaVersion: 1; readonly kind: "web-ar-occlusion-recorded-metric-input"; readonly virtualZThresholds: readonly number[]; readonly frames: readonly RecordedMetricFrame[]; }
 export interface CrossingMeasurement { readonly virtualZ: number; readonly trueForeground: number; readonly falseForeground: number; readonly trueBackground: number; readonly falseBackground: number; readonly accuracy: number; readonly sampleCount: number; }
 export interface RecordedMetricEvaluation { readonly schemaVersion: 1; readonly kind: "web-ar-occlusion-recorded-metric-evaluation"; readonly metric: { readonly maeMeters: number; readonly rmseMeters: number; readonly absRel: number; readonly sampleCount: number }; readonly crossings: readonly CrossingMeasurement[]; }
@@ -14,8 +14,16 @@ export function evaluateRecordedMetricDepth(value: RecordedMetricEvaluationInput
   if (value?.schemaVersion !== 1 || value.kind !== "web-ar-occlusion-recorded-metric-input" || !Array.isArray(value.frames) || value.frames.length === 0) throw new TypeError("invalid recorded metric input");
   if (!Array.isArray(value.virtualZThresholds) || value.virtualZThresholds.length < 2 || value.virtualZThresholds.some((threshold) => !Number.isFinite(threshold) || threshold <= 0) || new Set(value.virtualZThresholds).size !== value.virtualZThresholds.length) throw new TypeError("at least two unique positive virtual Z thresholds are required");
   const pairs: Array<readonly [number, number]> = [];
+  const newestTimestampBySource = new Map<string, number>();
+  const sourceFrames = new Set<string>();
   for (const frame of value.frames) {
-    if (!frame.id || frame.predictedLinearZ.length !== frame.referenceLinearZ.length) throw new TypeError("recorded metric frame is malformed");
+    if (!frame.id || typeof frame.sourceId !== "string" || frame.sourceId.length === 0 || typeof frame.sourceFrameId !== "string" || frame.sourceFrameId.length === 0 || !Number.isFinite(frame.captureTimestamp) || frame.predictedLinearZ.length !== frame.referenceLinearZ.length) throw new TypeError("recorded metric frame is malformed");
+    const association = `${frame.sourceId}\u0000${frame.sourceFrameId}`;
+    if (sourceFrames.has(association)) throw new TypeError("recorded metric source frame association is duplicated");
+    sourceFrames.add(association);
+    const newestTimestamp = newestTimestampBySource.get(frame.sourceId);
+    if (newestTimestamp !== undefined && frame.captureTimestamp <= newestTimestamp) throw new TypeError("recorded metric capture timestamps must be strictly increasing per source");
+    newestTimestampBySource.set(frame.sourceId, frame.captureTimestamp);
     for (let index = 0; index < frame.predictedLinearZ.length; index += 1) {
       const predicted = frame.predictedLinearZ[index]!;
       const reference = frame.referenceLinearZ[index]!;

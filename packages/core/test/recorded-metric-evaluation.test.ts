@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { evaluateRecordedMetricDepth } from "../src/recorded-metric-evaluation.ts";
 
-const input = { schemaVersion: 1 as const, kind: "web-ar-occlusion-recorded-metric-input" as const, virtualZThresholds: [3, 1.5], frames: [{ id: "recorded-1", predictedLinearZ: [1, 2, 4, null], referenceLinearZ: [1, 3, 4, 2] }] };
+const input = { schemaVersion: 1 as const, kind: "web-ar-occlusion-recorded-metric-input" as const, virtualZThresholds: [3, 1.5], frames: [{ id: "recorded-1", sourceId: "recording-1", sourceFrameId: "frame-1", captureTimestamp: 1000, predictedLinearZ: [1, 2, 4, null], referenceLinearZ: [1, 3, 4, 2] }] };
 
 test("reports metric errors and each crossing threshold separately", () => {
   const output = evaluateRecordedMetricDepth(input);
@@ -22,7 +22,12 @@ test("reports metric errors and each crossing threshold separately", () => {
 
 test("rejects missing thresholds and invalid depth without fabricating samples", () => {
   assert.throws(() => evaluateRecordedMetricDepth({ ...input, virtualZThresholds: [1] }), /at least two/);
-  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [{ id: "empty", predictedLinearZ: [null], referenceLinearZ: [1] }] }), /no jointly valid/);
+  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [{ ...input.frames[0], id: "empty", predictedLinearZ: [null], referenceLinearZ: [1] }] }), /no jointly valid/);
+  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [{ ...input.frames[0], sourceId: "" }] }), /malformed/);
+  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [{ ...input.frames[0], sourceFrameId: "" }] }), /malformed/);
+  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [{ ...input.frames[0], captureTimestamp: Number.NaN }] }), /malformed/);
+  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [input.frames[0], { ...input.frames[0], id: "recorded-2" }] }), /duplicated/);
+  assert.throws(() => evaluateRecordedMetricDepth({ ...input, frames: [input.frames[0], { ...input.frames[0], id: "recorded-2", sourceFrameId: "frame-2" }] }), /strictly increasing/);
 });
 
 test("CLI emits the same structured multi-threshold evaluation", async () => {
