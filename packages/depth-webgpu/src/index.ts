@@ -113,6 +113,19 @@ export interface ProviderDepthFrame {
   readonly height: number;
 }
 
+export interface NativeMetricDepthEvidence {
+  readonly linearZMeters: Float32Array;
+  readonly validity: Uint8Array;
+  readonly inverseZ: Float32Array;
+  readonly width: typeof METRIC_DEPTH_INPUT_SIZE;
+  readonly height: typeof METRIC_DEPTH_INPUT_SIZE;
+  readonly representation: "linear-z";
+  readonly scale: "metric";
+  readonly unit: "meter";
+  readonly sourceFrameId: string;
+  readonly captureTimestamp: number;
+}
+
 const TEXTURE_USAGE_COPY_DST = 0x02;
 const TEXTURE_USAGE_BINDING = 0x04;
 const IDENTITY_UV_TRANSFORM = new Float32Array([
@@ -210,6 +223,80 @@ export function normalizeMetricRgbaToNchw(
     }
   }
   return output;
+}
+
+export function createNativeMetricDepthEvidence(
+  values: ArrayLike<number>,
+  width: number,
+  height: number,
+  sourceFrameId: string,
+  captureTimestamp: number,
+): NativeMetricDepthEvidence {
+  const sampleCount = METRIC_DEPTH_INPUT_SIZE ** 2;
+  if (
+    values == null ||
+    width !== METRIC_DEPTH_INPUT_SIZE ||
+    height !== METRIC_DEPTH_INPUT_SIZE ||
+    values.length !== sampleCount
+  ) {
+    throw new TypeError(
+      "Metric depth output must contain exactly 518x518 samples",
+    );
+  }
+  if (
+    typeof sourceFrameId !== "string" ||
+    sourceFrameId.trim().length === 0 ||
+    !Number.isFinite(captureTimestamp)
+  ) {
+    throw new TypeError(
+      "Metric depth evidence requires a nonempty sourceFrameId and finite captureTimestamp",
+    );
+  }
+
+  const linearZMeters = new Float32Array(sampleCount);
+  const validity = new Uint8Array(sampleCount);
+  const inverseZ = new Float32Array(sampleCount);
+  linearZMeters.fill(Number.NaN);
+  inverseZ.fill(Number.NaN);
+
+  let validCount = 0;
+  for (let index = 0; index < sampleCount; index += 1) {
+    const sample = values[index];
+    if (
+      typeof sample !== "number" ||
+      !Number.isFinite(sample) ||
+      sample <= METRIC_DEPTH_OUTPUT_MIN_METERS ||
+      sample > METRIC_DEPTH_OUTPUT_MAX_METERS
+    ) {
+      continue;
+    }
+
+    const linearZ = Math.fround(sample);
+    const reciprocal = Math.fround(1 / linearZ);
+    if (linearZ <= 0 || !Number.isFinite(reciprocal)) continue;
+
+    linearZMeters[index] = linearZ;
+    inverseZ[index] = reciprocal;
+    validity[index] = 1;
+    validCount += 1;
+  }
+
+  if (validCount === 0) {
+    throw new RangeError("Metric depth output contains no valid samples");
+  }
+
+  return Object.freeze({
+    linearZMeters,
+    validity,
+    inverseZ,
+    width: METRIC_DEPTH_INPUT_SIZE,
+    height: METRIC_DEPTH_INPUT_SIZE,
+    representation: "linear-z",
+    scale: "metric",
+    unit: "meter",
+    sourceFrameId,
+    captureTimestamp,
+  });
 }
 
 export function normalizeRelativeDepth(

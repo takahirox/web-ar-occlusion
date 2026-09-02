@@ -32,6 +32,7 @@ import {
   TRANSFORMERS_JS_VERSION,
   WebGPUMonocularDepthProvider,
   captureVideoFrame,
+  createNativeMetricDepthEvidence,
   normalizeMetricRgbaToNchw,
   normalizeRelativeDepth,
   preserveRawNearIsLargerDepth,
@@ -210,6 +211,78 @@ test("rejects non-518 RGBA metric inputs", () => {
   assert.throws(() => normalizeMetricRgbaToNchw(rgba, 518, 517), message);
   assert.throws(() => normalizeMetricRgbaToNchw(rgba.subarray(1), 518, 518), message);
   assert.throws(() => normalizeMetricRgbaToNchw(new Uint8Array(rgba.length), 518, 518), message);
+});
+
+test("creates frame-exact native metric depth evidence", () => {
+  const sampleCount = METRIC_DEPTH_INPUT_SIZE ** 2;
+  const samples = Array(sampleCount).fill(2);
+  samples.splice(0, 7, 1, 20, 0, -1, Number.NaN, Infinity, 20.000001);
+  const before = samples.slice();
+
+  const evidence = createNativeMetricDepthEvidence(
+    samples,
+    518,
+    518,
+    "camera-42",
+    123.5,
+  );
+
+  assert.ok(Object.isFrozen(evidence));
+  assert.ok(evidence.linearZMeters instanceof Float32Array);
+  assert.ok(evidence.validity instanceof Uint8Array);
+  assert.ok(evidence.inverseZ instanceof Float32Array);
+  assert.equal(evidence.linearZMeters.length, sampleCount);
+  assert.equal(evidence.validity.length, sampleCount);
+  assert.equal(evidence.inverseZ.length, sampleCount);
+  assert.deepEqual(samples, before);
+  assert.notStrictEqual(evidence.linearZMeters, samples);
+  assert.equal(evidence.linearZMeters[0], 1);
+  assert.equal(evidence.inverseZ[0], 1);
+  assert.equal(evidence.validity[0], 1);
+  assert.equal(evidence.linearZMeters[1], 20);
+  assert.equal(evidence.inverseZ[1], Math.fround(1 / 20));
+  assert.equal(evidence.validity[1], 1);
+  for (const index of [2, 3, 4, 5, 6]) {
+    assert.equal(Number.isNaN(evidence.linearZMeters[index]), true);
+    assert.equal(Number.isNaN(evidence.inverseZ[index]), true);
+    assert.equal(evidence.validity[index], 0);
+  }
+  assert.equal(evidence.linearZMeters[7], 2);
+  assert.equal(evidence.inverseZ[7], 0.5);
+  assert.equal(evidence.validity[7], 1);
+  assert.equal(evidence.width, 518);
+  assert.equal(evidence.height, 518);
+  assert.equal(evidence.representation, "linear-z");
+  assert.equal(evidence.scale, "metric");
+  assert.equal(evidence.unit, "meter");
+  assert.equal(evidence.sourceFrameId, "camera-42");
+  assert.equal(evidence.captureTimestamp, 123.5);
+});
+
+test("requires exact metric output dimensions and frame association", () => {
+  const sampleCount = METRIC_DEPTH_INPUT_SIZE ** 2;
+  const samples = new Float32Array(sampleCount).fill(1);
+  const shapeMessage = /exactly 518x518 samples/;
+  assert.throws(() => createNativeMetricDepthEvidence(samples, 517, 518, "frame", 1), shapeMessage);
+  assert.throws(() => createNativeMetricDepthEvidence(samples, 518, 517, "frame", 1), shapeMessage);
+  assert.throws(() => createNativeMetricDepthEvidence(samples.subarray(1), 518, 518, "frame", 1), shapeMessage);
+  assert.throws(() => createNativeMetricDepthEvidence(new Float32Array(sampleCount + 1), 518, 518, "frame", 1), shapeMessage);
+
+  const associationMessage = /nonempty sourceFrameId and finite captureTimestamp/;
+  assert.throws(() => createNativeMetricDepthEvidence(samples, 518, 518, "", 1), associationMessage);
+  assert.throws(() => createNativeMetricDepthEvidence(samples, 518, 518, "   ", 1), associationMessage);
+  assert.throws(() => createNativeMetricDepthEvidence(samples, 518, 518, "frame", Number.NaN), associationMessage);
+  assert.throws(() => createNativeMetricDepthEvidence(samples, 518, 518, "frame", Infinity), associationMessage);
+});
+
+test("rejects an all-invalid native metric frame", () => {
+  const samples = new Float32Array(METRIC_DEPTH_INPUT_SIZE ** 2);
+  samples.fill(Number.NaN);
+  samples.set([0, -1, 21, Infinity]);
+  assert.throws(
+    () => createNativeMetricDepthEvidence(samples, 518, 518, "frame", 1),
+    /no valid samples/,
+  );
 });
 
 test("normalizes only finite depth with an explicit near/far orientation", () => {
