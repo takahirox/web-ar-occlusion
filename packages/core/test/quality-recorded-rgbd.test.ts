@@ -110,7 +110,7 @@ test("CLI emits a verified corpus and validity-aware quality input with digest-b
       evaluatedAt: "2026-09-02T00:00:00.000Z",
       implementationId: "fixture-relative-depth",
       frames: [
-        { id: "frame-0000", width: 2, height: 2, inverseDepth: [4, 2, null, 1] },
+        { id: "frame-0000", width: 2, height: 2, inverseDepth: [4, 0, null, -1] },
         { id: "frame-0001", width: 2, height: 2, inverseDepth: [4, 3, 2, 1] },
       ],
     }));
@@ -122,14 +122,14 @@ test("CLI emits a verified corpus and validity-aware quality input with digest-b
     assert.doesNotThrow(() => validateCorpusManifest(corpus));
     assert.equal(corpus.provenance, "recorded-rgbd");
     const input = JSON.parse(await readFile(join(root, "bundle", "quality-input.json"), "utf8"));
-    assert.equal(input.depthScale, "relative");
+    assert.equal(input.depthScale, "unavailable");
     assert.deepEqual(input.frames[0].validityMask, [1, 1, 0, 1]);
-    assert.equal(input.frames[0].referenceDepth[2], null);
+    assert.equal(input.frames[0].referenceDepth, undefined);
     assert.equal(input.reviewItems.length, 10);
     const artifact = evaluateQuality(input);
     assert.equal(artifact.claims.benchmark, false);
     assert.equal(getQualityMetric(artifact, "depth.mae.m").status, "missing");
-    assert.equal(getQualityMetric(artifact, "depth.abs-relative").status, "known");
+    assert.equal(getQualityMetric(artifact, "depth.abs-relative").status, "missing");
     for (const item of input.reviewItems) {
       assert.equal(item.uri.startsWith("bundle/"), true);
       const bytes = await readFile(join(root, item.uri));

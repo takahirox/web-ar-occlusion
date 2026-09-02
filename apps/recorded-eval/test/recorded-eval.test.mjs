@@ -123,16 +123,15 @@ test('browser helpers preserve corpus association, dimensions, order, and exact 
   assert.throws(() => validateCorpus({ schemaVersion: 1, kind: 'quality-corpus-manifest', provenance: 'recorded-rgbd', sources: [], samples: [] }), /quality corpus/);
 });
 
-test('raw positive near-is-larger model values are nearest-resampled without confidence', () => {
-  const raw = validateModelDepth({ data: [1, 2], width: 2, height: 1, orientation: 'near-is-larger' });
-  assert.deepEqual(Array.from(nearestResample(raw.values, 2, 1, 4, 2)), [1, 1, 2, 2, 1, 1, 2, 2]);
-  assert.throws(() => validateModelDepth({ data: [0], width: 1, height: 1, orientation: 'near-is-larger' }), /finite positive/);
-  assert.throws(() => validateModelDepth({ data: [Number.NaN], width: 1, height: 1, orientation: 'near-is-larger' }), /finite positive/);
+test('raw finite near-is-larger model values are nearest-resampled without confidence', () => {
+  const raw = validateModelDepth({ data: [-1, 0], width: 2, height: 1, orientation: 'near-is-larger' });
+  assert.deepEqual(Array.from(nearestResample(raw.values, 2, 1, 4, 2)), [-1, -1, 0, 0, -1, -1, 0, 0]);
+  assert.throws(() => validateModelDepth({ data: [Number.NaN], width: 1, height: 1, orientation: 'near-is-larger' }), /finite values/);
   assert.throws(() => validateModelDepth({ data: [1], width: 1, height: 1, orientation: 'near-is-smaller' }), /metadata/);
   const output = createPredictionDocument([
     { sourceFrameId: 'frame-b', width: 2, height: 1, relativeInverseDepth: raw.values },
   ], 'pinned-runtime', '2026-01-01T00:00:00.000Z');
-  assert.deepEqual(output.frames[0], { id: 'frame-b', width: 2, height: 1, inverseDepth: [1, 2] });
+  assert.deepEqual(output.frames[0], { id: 'frame-b', width: 2, height: 1, inverseDepth: [-1, 0] });
   assert.equal('confidence' in output.frames[0], false);
   assert.equal(output.kind, 'web-ar-occlusion-relative-inverse-depth');
 });

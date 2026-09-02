@@ -48,7 +48,7 @@ function commonHeaders(contentType, length) {
     'Content-Length': String(length),
     'X-Content-Type-Options': 'nosniff',
     'Cross-Origin-Opener-Policy': 'same-origin',
-    'Content-Security-Policy': "default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://huggingface.co https://*.huggingface.co https://cdn-lfs.huggingface.co; img-src 'self' blob:; style-src 'unsafe-inline'; base-uri 'none'; object-src 'none'",
+    'Content-Security-Policy': "default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src blob:; connect-src 'self' https://cdn.jsdelivr.net https://huggingface.co https://*.huggingface.co https://*.cdn.hf.co; img-src 'self' blob:; style-src 'unsafe-inline'; base-uri 'none'; object-src 'none'",
   };
 }
 

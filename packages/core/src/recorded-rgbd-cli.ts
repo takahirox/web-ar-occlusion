@@ -314,11 +314,13 @@ function pgm(width: number, height: number, pixels: Uint8Array): Buffer {
 }
 
 function depthVisualization(depth: Uint16Array): Uint8Array {
-  const valid = [...depth].filter((value) => value > 0);
   const output = new Uint8Array(depth.length);
-  if (valid.length === 0) return output;
-  const minimum = Math.min(...valid);
-  const maximum = Math.max(...valid);
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  for (const value of depth) {
+    if (value > 0) { minimum = Math.min(minimum, value); maximum = Math.max(maximum, value); }
+  }
+  if (!Number.isFinite(minimum)) return output;
   for (let index = 0; index < depth.length; index += 1) {
     const value = depth[index]!;
     if (value > 0) output[index] = minimum === maximum ? 255 : Math.round(255 * (maximum - value) / (maximum - minimum));
@@ -344,7 +346,7 @@ function parsePredictions(value: unknown, prepared: PreparedFrame[]): Prediction
     invariant(Array.isArray(item.inverseDepth) && item.inverseDepth.length === source.width * source.height, `prediction ${item.id} inverseDepth length mismatch`);
     const inverseDepth = item.inverseDepth.map((sample, sampleIndex) => {
       if (sample === null) return null;
-      invariant(typeof sample === "number" && Number.isFinite(sample) && sample > 0 && Number.isFinite(1 / sample), `prediction ${item.id} inverseDepth[${sampleIndex}] must be null or finite positive inverse depth`);
+      invariant(typeof sample === "number" && Number.isFinite(sample), `prediction ${item.id} inverseDepth[${sampleIndex}] must be null or finite raw inverse depth`);
       return sample;
     });
     frames.push({ id: item.id, width: source.width, height: source.height, inverseDepth });
@@ -434,8 +436,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       const validityMask = new Array<number>(frame.depth.length).fill(0);
       const predictedMask = new Array<number>(frame.depth.length).fill(0);
       const referenceMask = new Array<number>(frame.depth.length).fill(0);
-      const predictedDepth = new Array<number | null>(frame.depth.length).fill(null);
-      const referenceDepth = new Array<number | null>(frame.depth.length).fill(null);
       const difference = new Uint8Array(frame.depth.length);
       for (let index = 0; index < frame.depth.length; index += 1) {
         const inverse = prediction.inverseDepth[index];
@@ -444,20 +444,18 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
           continue;
         }
         validityMask[index] = 1;
-        predictedDepth[index] = 1 / inverse;
-        referenceDepth[index] = frame.depth[index]! / DEPTH_FACTOR;
         predictedMask[index] = inverse >= predictedPlane ? 1 : 0;
-        referenceMask[index] = referenceDepth[index]! <= referencePlane ? 1 : 0;
+        referenceMask[index] = frame.depth[index]! / DEPTH_FACTOR <= referencePlane ? 1 : 0;
         difference[index] = predictedMask[index] === referenceMask[index] ? 0 : 255;
       }
-      frames.push({ id: frame.id, timestampMs: frame.pair.rgb.timestamp * 1000, width: frame.width, height: frame.height, predictedMask, referenceMask, validityMask, predictedDepth, referenceDepth });
+      frames.push({ id: frame.id, timestampMs: frame.pair.rgb.timestamp * 1000, width: frame.width, height: frame.height, predictedMask, referenceMask, validityMask });
       reviews.push(reviewItem(`${frame.id}-rgb`, `${options.output}/sources/rgb/${frame.id}.${frame.rgbExtension}`, frame.rgbBytes, frame.id));
       addReview(outputs, reviews, options.output, frame, `review/${frame.id}-reference-depth.pgm`, pgm(frame.width, frame.height, depthVisualization(frame.depth)), "reference-depth");
       addReview(outputs, reviews, options.output, frame, `review/${frame.id}-predicted-mask.pgm`, pgm(frame.width, frame.height, Uint8Array.from(predictedMask, (value) => value * 255)), "predicted-mask");
       addReview(outputs, reviews, options.output, frame, `review/${frame.id}-reference-mask.pgm`, pgm(frame.width, frame.height, Uint8Array.from(referenceMask, (value) => value * 255)), "reference-mask");
       addReview(outputs, reviews, options.output, frame, `review/${frame.id}-diff.pgm`, pgm(frame.width, frame.height, difference), "diff");
     }
-    const input: QualityEvaluationInput = { schemaVersion: 1, kind: "web-ar-occlusion-quality-input", provenance: { evaluatedAt: predictions.evaluatedAt, sourceKind: "fixed-corpus", sourceId: corpus.id, sourceDigest: corpus.digest, implementationId: predictions.implementationId, implementationDigest: predictionDigest, configDigest: sha256Canonical(config), evaluatorVersion: "quality-v1/recorded-rgbd-phase1-v1" }, depthScale: "relative", frames, reviewItems: reviews };
+    const input: QualityEvaluationInput = { schemaVersion: 1, kind: "web-ar-occlusion-quality-input", provenance: { evaluatedAt: predictions.evaluatedAt, sourceKind: "fixed-corpus", sourceId: corpus.id, sourceDigest: corpus.digest, implementationId: predictions.implementationId, implementationDigest: predictionDigest, configDigest: sha256Canonical(config), evaluatorVersion: "quality-v1/recorded-rgbd-phase1-v1" }, depthScale: "unavailable", frames, reviewItems: reviews };
     qualityInputPath = `${options.output}/quality-input.json`;
     outputs.push({ path: "quality-input.json", bytes: Buffer.from(`${canonicalJson(input)}\n`, "utf8") });
   }

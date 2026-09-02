@@ -60,7 +60,7 @@ export function validateModelDepth(result) {
   const values = new Float32Array(result.data.length);
   for (let index = 0; index < result.data.length; index += 1) {
     const value = Number(result.data[index]);
-    if (!Number.isFinite(value) || value <= 0) throw new TypeError('model depth must contain only finite positive values');
+    if (!Number.isFinite(value)) throw new TypeError('model depth must contain only finite values');
     values[index] = value;
   }
   return { values, width: result.width, height: result.height };

@@ -69,7 +69,7 @@ npm run quality:prepare-rgbd -- \
   --occlusion-quantile 0.5
 ```
 
-Prediction input is explicit relative inverse depth (larger values are nearer), with `null` preserving an unknown prediction:
+Prediction input is finite raw relative inverse depth (larger values are nearer and values may be zero or negative), with `null` preserving an unknown prediction:
 
 ```json
 {
@@ -103,7 +103,7 @@ npm run quality:evaluate -- artifacts/tum-freiburg1-candidate-a/quality-input.js
   > artifacts/tum-freiburg1-candidate-a/quality-artifact.json
 ```
 
-For each frame, only pixels with both nonzero TUM depth and non-null predicted inverse depth are valid. Let `k=ceil(q*n)` over that joint support. The reference occlusion plane is the kth-smallest TUM metric depth and reference foreground is `depth <= plane`. The predicted plane is the kth-largest relative inverse depth and predicted foreground is `inverseDepth >= plane`. Threshold ties are included. This is a deterministic rank/quantile comparison rule, not metric calibration. The input therefore declares `depthScale: "relative"`: scale-aligned relative-depth metrics may be known, while metre MAE/RMSE remain explicitly missing. TUM raw zero remains null/invalid.
+For each frame, only pixels with both nonzero TUM depth and non-null predicted inverse depth are valid. Let `k=ceil(q*n)` over that joint support. The reference occlusion plane is the kth-smallest TUM metric depth and reference foreground is `depth <= plane`. The predicted plane is the kth-largest raw relative inverse depth and predicted foreground is `inverseDepth >= plane`. Threshold ties are included. This is a deterministic rank/quantile comparison rule, not metric calibration. The input therefore declares `depthScale: "unavailable"`: depth-error metrics remain explicitly missing, while mask, boundary, temporal, rendered, and leak measurements can be known. TUM raw zero remains null/invalid.
 
 Each predicted bundle contains repository-relative, SHA-256-bound review items for the original RGB PNG/JPEG, reference inverse-depth visualization, predicted mask, reference mask, and diff. Generated visualizations use binary Netpbm PGM (`P5`); diff value 64 means invalid/unknown, 255 means disagreement, and 0 means agreement. The CLI rejects parent traversal, absolute association paths, source or output symlinks, unsupported depth PNG modes, mismatched dimensions, existing output directories, excessive files/dimensions/pixels, and excessive total output.
 
