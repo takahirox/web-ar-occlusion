@@ -1,4 +1,9 @@
-import { DEPTH_MODEL_ID, DEPTH_MODEL_REVISION, TRANSFORMERS_JS_VERSION, WebGPUMonocularDepthProvider } from '/depth-webgpu.js';
+import {
+  METRIC_DEPTH_MODEL_ID,
+  METRIC_DEPTH_MODEL_REVISION,
+  ONNX_RUNTIME_WEB_VERSION,
+  WebGPUMonocularDepthProvider
+} from '/depth-webgpu.js';
 import {
   applyKnownPlaneCalibration,
   captureKnownPlaneAnchor,
@@ -32,7 +37,7 @@ const elements = Object.fromEntries([
 
 const state = {
   lifecycle: 'idle', stream: null, generation: 0, requested: 'balanced', active: 'balanced',
-  view: 'occlusion', mode: 'relative', previewFlipped: true, device: null, context: null, pipeline: null,
+  view: 'occlusion', mode: 'metric', previewFlipped: true, device: null, context: null, pipeline: null,
   uniformBuffer: null, bindGroup: null, placeholderDepth: null, depthFrame: null, depthValid: false,
   depthReason: 'no result', provider: null, providerState: 'idle', animation: 0, sourceId: null,
   inferenceTimer: 0, inferencePending: false, inferenceRequest: 0, acceptedRequest: 0,
@@ -41,6 +46,7 @@ const state = {
   anchors: [], anchorSequence: 0, pendingAnchorDistance: null, calibrationModel: null,
   calibrationReason: 'relative-only', metricTexture: null, metricMask: null,
   metricLinearZ: null, metricValidity: null, metricSourceFrameId: null, metricCaptureTimestamp: null,
+  metricProvenance: null,
   probesEnabled: false, probes: [], probeSequence: 0,
   cleanup: Promise.resolve()
 };
@@ -107,21 +113,30 @@ function setDepthInput(texture) {
 function metricGuidanceText(metricState) {
   if (metricState.unavailableReason === 'tracking-lost') return 'tracking lost · no stale value';
   if (metricState.unavailableReason === 'stale-result') return 'result stale · acquire a fresh target';
-  if (metricState.unavailableReason === 'calibration-lost') return 'manual calibration unavailable';
+  if (metricState.unavailableReason === 'calibration-lost') return 'metric evidence unavailable';
   if (metricState.unavailableReason === 'provider-failure') return 'depth provider unavailable';
   return METRIC_GUIDANCE_LABELS[metricState.guidance];
 }
 
+function metricResultAvailable() {
+  return state.metricTexture !== null &&
+    state.metricLinearZ !== null &&
+    state.metricValidity !== null &&
+    state.metricProvenance !== null &&
+    state.metricSourceFrameId === state.depthFrame?.sourceFrameId &&
+    state.metricCaptureTimestamp === state.depthFrame?.captureTimestamp;
+}
+
 function renderDistanceProbes() {
-  const calibrated = state.calibrationModel !== null;
+  const metricReady = metricResultAvailable();
   const onButton = elements.probeControls.querySelector('button[data-probes="on"]');
-  onButton.disabled = !calibrated;
-  onButton.title = calibrated ? 'Click an object to attach and track an approximate distance label.' : 'Metric calibration is required before meters can be displayed.';
+  onButton.disabled = !metricReady;
+  onButton.title = metricReady ? 'Click an object to attach and track an approximate distance label.' : 'A source-associated metric result is required before meters can be displayed.';
   elements.clearProbes.disabled = state.probes.length === 0;
-  elements.stage.classList.toggle('probes-enabled', state.probesEnabled && calibrated);
+  elements.stage.classList.toggle('probes-enabled', state.probesEnabled && metricReady);
   elements.probeStatus.textContent = state.probesEnabled
-    ? `${state.probes.length} tracked object${state.probes.length === 1 ? '' : 's'} · ${calibrated ? 'click image to add' : 'metric unavailable'}`
-    : `off · ${calibrated ? 'manual calibration ready' : 'metric calibration required'}`;
+    ? `${state.probes.length} tracked object${state.probes.length === 1 ? '' : 's'} · ${metricReady ? 'click image to add' : 'metric unavailable'}`
+    : `off · ${metricReady ? `${state.metricProvenance} ready` : 'metric result required'}`;
   elements.probeOverlay.replaceChildren();
   if (!state.probesEnabled) return;
 
@@ -192,7 +207,7 @@ function updateDistanceProbeMeasurement(probe, linearZ, validity, width, height,
       captureTimestamp: result.captureTimestamp,
       depthMeters: sample.depthMeters,
       normalizedX: depthX,
-      provenance: 'manual-known-plane'
+      provenance: state.metricProvenance ?? 'manual-known-plane'
     }
   });
 }
@@ -214,7 +229,7 @@ function addDistanceProbe(x, y) {
 }
 
 function setDistanceProbesEnabled(enabled) {
-  state.probesEnabled = enabled && state.calibrationModel !== null;
+  state.probesEnabled = enabled && metricResultAvailable();
   selectButton(elements.probeControls, 'probes', state.probesEnabled ? 'on' : 'off');
   renderDistanceProbes();
 }
@@ -227,6 +242,7 @@ function clearMetricMask(reason, invalidationType = 'calibration-lost') {
   state.metricValidity = null;
   state.metricSourceFrameId = null;
   state.metricCaptureTimestamp = null;
+  state.metricProvenance = null;
   invalidateProbeMetricStates(invalidationType);
   if (state.mode === 'metric' && state.placeholderDepth) setDepthInput(state.placeholderDepth);
   if (reason) state.depthReason = reason;
@@ -252,19 +268,89 @@ function supersedeDepth() {
 }
 
 function updateCalibrationControls() {
-  const calibrated = state.calibrationModel !== null;
+  const metricReady = metricResultAvailable();
+  const nativeActive = state.metricProvenance === 'native-metric';
   const metricButton = elements.modeControls.querySelector('button[data-mode="metric"]');
-  metricButton.disabled = !calibrated;
-  metricButton.title = calibrated ? '' : 'Capture at least two distinct known distances first.';
-  elements.captureAnchor.disabled = state.lifecycle !== 'running' || state.provider?.state !== 'ready' || state.pendingAnchorDistance !== null;
-  elements.depthMode.textContent = state.mode === 'metric' ? 'manual calibration estimated meters' : 'relative unitless';
-  elements.calibrationStatus.textContent = calibrated ? `manual calibration valid · ${state.anchors.length} anchors · RMSE ${state.calibrationModel.inverseDepthRmse.toFixed(4)} 1/m` : `${state.calibrationReason} · ${state.anchors.length} anchors`;
+  metricButton.disabled = !metricReady;
+  metricButton.title = metricReady ? '' : 'Awaiting a source-associated native metric result or manual fallback.';
+  elements.captureAnchor.disabled = nativeActive || state.lifecycle !== 'running' || state.provider?.state !== 'ready' || state.pendingAnchorDistance !== null;
+  elements.depthMode.textContent = state.mode === 'metric'
+    ? (nativeActive ? 'native model meters' : 'manual calibration estimated meters')
+    : 'relative unitless';
+  elements.calibrationStatus.textContent = nativeActive
+    ? 'native metric active · manual fallback idle'
+    : (state.calibrationModel ? `manual fallback valid · ${state.anchors.length} anchors · RMSE ${state.calibrationModel.inverseDepthRmse.toFixed(4)} 1/m` : `${state.calibrationReason} · ${state.anchors.length} anchors`);
   renderDistanceProbes();
 }
 function metricEvidence(result) { return { sourceId: state.sourceId, sourceFrameId: result.sourceFrameId, captureTimestamp: result.captureTimestamp, rawInverseDepth: result.rawInverseDepth, width: result.width, height: result.height }; }
 function numericControl(element, minimum, maximum, label) { const value = Number(element.value); if (!Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`${label} is outside its allowed range.`); return value; }
 function uploadMetricMask(mask, width, height) { const bytesPerRow = Math.ceil(width / 256) * 256; const padded = new Uint8Array(bytesPerRow * height); for (let row = 0; row < height; row += 1) padded.set(mask.subarray(row * width, (row + 1) * width), row * bytesPerRow); const texture = state.device.createTexture({ label: 'metric-crossing-mask', size: { width, height, depthOrArrayLayers: 1 }, format: 'r8unorm', usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING }); try { state.device.queue.writeTexture({ texture }, padded, { bytesPerRow, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 }); return texture; } catch (error) { texture.destroy(); throw error; } }
+function applyMetricBuffers(result, linearZ, validity, provenance) {
+  const previousProvenance = state.metricProvenance;
+  const mask = updateMetricCrossingMask(
+    state.metricMask,
+    linearZ,
+    validity,
+    numericControl(elements.virtualZ, 0.1, 20, 'Virtual Z'),
+    numericControl(elements.entryHysteresis, 0, 1, 'Entry hysteresis'),
+    numericControl(elements.exitHysteresis, 0, 1, 'Exit hysteresis')
+  );
+  const texture = uploadMetricMask(mask, result.width, result.height);
+  state.metricTexture?.destroy();
+  Object.assign(state, {
+    metricTexture: texture,
+    metricMask: mask,
+    metricLinearZ: linearZ,
+    metricValidity: validity,
+    metricSourceFrameId: result.sourceFrameId,
+    metricCaptureTimestamp: result.captureTimestamp,
+    metricProvenance: provenance
+  });
+  if (previousProvenance !== null && previousProvenance !== provenance) {
+    recreateProbeMetricStates(state.sourceId);
+  }
+  updateDistanceProbeMeasurements(linearZ, validity, result.width, result.height, result);
+}
+
+function validatedNativeMetric(result) {
+  const nativeMetric = result.nativeMetric;
+  if (!(nativeMetric.linearZMeters instanceof Float32Array) ||
+      !(nativeMetric.validity instanceof Uint8Array) ||
+      nativeMetric.representation !== 'linear-z' || nativeMetric.scale !== 'metric' || nativeMetric.unit !== 'meter' ||
+      nativeMetric.sourceFrameId !== result.sourceFrameId || nativeMetric.captureTimestamp !== result.captureTimestamp ||
+      nativeMetric.width !== result.width || nativeMetric.height !== result.height ||
+      nativeMetric.linearZMeters.length !== result.width * result.height ||
+      nativeMetric.validity.length !== result.width * result.height) {
+    throw new TypeError('Native metric evidence did not match its captured source frame contract.');
+  }
+  let validSamples = 0;
+  for (let index = 0; index < nativeMetric.validity.length; index += 1) {
+    if (nativeMetric.validity[index] === 1 &&
+        Number.isFinite(nativeMetric.linearZMeters[index]) &&
+        nativeMetric.linearZMeters[index] > 0) validSamples += 1;
+  }
+  if (validSamples === 0) throw new RangeError('Native metric evidence contained no valid samples.');
+  return nativeMetric;
+}
+
 function updateMetricResult(result) {
+  if (result.nativeMetric !== undefined) {
+    state.pendingAnchorDistance = null;
+    try {
+      const nativeMetric = validatedNativeMetric(result);
+      applyMetricBuffers(
+        result,
+        nativeMetric.linearZMeters,
+        nativeMetric.validity,
+        'native-metric'
+      );
+      state.calibrationReason = 'native-metric-active';
+    } catch (error) {
+      clearMetricMask(error?.message || 'native-metric-rejected', 'provider-failure');
+    }
+    return;
+  }
+
   const frame = metricEvidence(result);
   if (state.pendingAnchorDistance !== null) {
     const distanceMeters = state.pendingAnchorDistance;
@@ -313,25 +399,12 @@ function updateMetricResult(result) {
     return;
   }
   try {
-    const mask = updateMetricCrossingMask(
-      state.metricMask,
+    applyMetricBuffers(
+      result,
       application.linearZ,
       application.validity,
-      numericControl(elements.virtualZ, 0.1, 20, 'Virtual Z'),
-      numericControl(elements.entryHysteresis, 0, 1, 'Entry hysteresis'),
-      numericControl(elements.exitHysteresis, 0, 1, 'Exit hysteresis')
+      'manual-known-plane'
     );
-    const texture = uploadMetricMask(mask, result.width, result.height);
-    state.metricTexture?.destroy();
-    Object.assign(state, {
-      metricTexture: texture,
-      metricMask: mask,
-      metricLinearZ: application.linearZ,
-      metricValidity: application.validity,
-      metricSourceFrameId: result.sourceFrameId,
-      metricCaptureTimestamp: result.captureTimestamp
-    });
-    updateDistanceProbeMeasurements(application.linearZ, application.validity, result.width, result.height, result);
   } catch (error) {
     clearMetricMask(error?.message || 'metric-mask-rejected');
   }
@@ -355,13 +428,13 @@ function refreshDepthValidity(now = performance.now()) {
     invalidateDepth('stale', true, 'stale-result');
     return false;
   }
-  const metricAssociated = state.metricTexture !== null && state.calibrationModel !== null && state.metricSourceFrameId === state.depthFrame?.sourceFrameId && state.metricCaptureTimestamp === state.depthFrame?.captureTimestamp;
+  const metricAssociated = metricResultAvailable();
   state.depthValid = baseValid && (state.mode === 'relative' || metricAssociated);
   return state.depthValid;
 }
 
 function metricRuntimeSummary() {
-  if (!state.calibrationModel) return 'Metric depth: unavailable · relative input is unitless';
+  if (!metricResultAvailable()) return 'Metric depth: unavailable · awaiting valid source-associated evidence';
   if (state.probes.length === 0) return 'Metric depth: starting · add a tracked object';
   const metricStates = state.probes.map((probe) => probe.metricState);
   let status = 'unavailable';
@@ -385,14 +458,13 @@ function updateTelemetry(now = performance.now()) {
   elements.depthValid.textContent = String(valid);
   elements.cameraSize.textContent = state.stream ? `${elements.camera.videoWidth || 0}×${elements.camera.videoHeight || 0}` : 'off';
   elements.viewMode.textContent = state.view;
-  const calibrated = state.calibrationModel !== null;
   elements.metricRuntimeStatus.textContent = metricRuntimeSummary();
   elements.metricSourceStatus.textContent = state.sourceId
-    ? (calibrated ? 'manual calibration · estimated m' : 'relative · unitless')
+    ? (state.metricProvenance === 'native-metric' ? 'native model · metric m' : (state.metricProvenance === 'manual-known-plane' ? 'manual fallback · estimated m' : 'metric evidence pending'))
     : 'relative unitless · no active camera source';
   updateCalibrationControls();
   if (state.lifecycle === 'running') {
-    const semantics = state.mode === 'metric' ? 'calibrated metric mask' : 'real relative depth';
+    const semantics = state.mode === 'metric' ? `${state.metricProvenance ?? 'pending'} metric mask` : 'real relative depth';
     elements.status.textContent = valid ? `Running · ${semantics}` : `Running · zero occlusion (${state.depthReason})`;
     elements.status.classList.remove('error');
   }
@@ -685,7 +757,7 @@ async function startCamera() {
     await waitForVideo(generation);
     state.provider = new WebGPUMonocularDepthProvider({ device: state.device });
     state.providerState = state.provider.state;
-    setLifecycle('model-loading', `Loading pinned ${DEPTH_MODEL_ID} on WebGPU…`);
+    setLifecycle('model-loading', `Loading pinned ${METRIC_DEPTH_MODEL_ID} on WebGPU…`);
     updateTelemetry();
     await state.provider.initialize();
     if (generation !== state.generation) return;
@@ -696,7 +768,7 @@ async function startCamera() {
     state.lastDepthTimestamp = 0;
     state.lastFpsSample = performance.now();
     state.depthReason = 'awaiting first result';
-    setLifecycle('running', 'Running · awaiting first real relative-depth result');
+    setLifecycle('running', 'Running · awaiting first native metric-depth result');
     elements.startScreen.classList.add('hidden');
     elements.stop.disabled = false;
     scheduleInference();
@@ -767,7 +839,7 @@ elements.clearProbes.addEventListener('click', () => {
   renderDistanceProbes();
 });
 elements.stage.addEventListener('click', (event) => {
-  if (!state.probesEnabled || !state.calibrationModel || state.lifecycle !== 'running' || !elements.startScreen.classList.contains('hidden')) return;
+  if (!state.probesEnabled || !metricResultAvailable() || state.lifecycle !== 'running' || !elements.startScreen.classList.contains('hidden')) return;
   const bounds = elements.stage.getBoundingClientRect();
   const x = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
   const y = Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height));
@@ -813,6 +885,6 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => stopCamera(false));
 window.addEventListener('resize', resizeCanvas);
-elements.backend.textContent = `Transformers.js ${TRANSFORMERS_JS_VERSION} · WebGPU`;
-elements.model.textContent = `${DEPTH_MODEL_ID}@${DEPTH_MODEL_REVISION}`;
+elements.backend.textContent = `ONNX Runtime Web ${ONNX_RUNTIME_WEB_VERSION} · WebGPU`;
+elements.model.textContent = `${METRIC_DEPTH_MODEL_ID}@${METRIC_DEPTH_MODEL_REVISION}`;
 updateTelemetry();

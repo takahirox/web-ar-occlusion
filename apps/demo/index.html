@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='24' fill='%2364e2bc'/%3E%3C/svg%3E">
-  <title>Relative and calibrated metric WebGPU occlusion</title>
+  <title>Native metric WebGPU occlusion</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -13,8 +13,8 @@
     <header>
       <div>
         <p class="eyebrow">WEB AR OCCLUSION · APPROACH B</p>
-        <h1>Relative diagnosis and explicit metric calibration.</h1>
-        <p class="lede">A live diagnostic for camera lifecycle, pinned Transformers.js WebGPU monocular-depth inference, and relative-depth occlusion.</p>
+        <h1>Automatic native metric depth with explicit fallback.</h1>
+        <p class="lede">A live diagnostic for camera lifecycle, pinned ONNX Runtime Web metric-depth inference, and source-associated metric occlusion.</p>
       </div>
       <span class="badge">REAL MONOCULAR DEPTH · WEBGPU</span>
     </header>
@@ -45,12 +45,12 @@
         <fieldset class="control-card control-depth">
           <legend>Depth semantics</legend>
           <div class="segmented" id="modeControls">
-            <button type="button" data-mode="relative" aria-pressed="true">Relative diagnostic</button>
-            <button type="button" data-mode="metric" aria-pressed="false">Metric calibrated</button>
+            <button type="button" data-mode="relative" aria-pressed="false">Relative diagnostic</button>
+            <button type="button" data-mode="metric" aria-pressed="true">Metric automatic</button>
           </div>
         </fieldset>
         <fieldset class="control-card control-calibration">
-          <legend>Known-plane calibration</legend>
+          <legend>Manual fallback calibration</legend>
           <label>Distance (m) <input id="anchorDistance" type="number" min="0.1" max="20" step="0.01" value="1"></label>
           <button class="secondary" id="captureAnchor" type="button" disabled>Capture center anchor</button>
           <button class="secondary" id="clearCalibration" type="button">Clear</button>
@@ -96,18 +96,18 @@
       </div>
       <dl>
         <div><dt>Provider lifecycle</dt><dd id="provider">idle</dd></div>
-        <div><dt>Backend</dt><dd id="backend">Transformers.js · WebGPU</dd></div>
-        <div><dt>Pinned model</dt><dd id="model">onnx-community/depth-anything-v2-small</dd></div>
+        <div><dt>Backend</dt><dd id="backend">ONNX Runtime Web 1.29.0 · WebGPU</dd></div>
+        <div><dt>Pinned model</dt><dd id="model">77ukhtar/depth-anything-v2-metric-onnx@a4259a3c45137b6eb32c84fcd95b86cd54c255b9</dd></div>
         <div><dt>Requested / active</dt><dd id="profiles">balanced / balanced</dd></div>
         <div><dt>Display FPS</dt><dd id="fps">—</dd></div>
         <div><dt>Accepted inference</dt><dd id="inference">0 · 0.0 Hz</dd></div>
         <div><dt>Depth age</dt><dd id="depthAge">—</dd></div>
         <div><dt>Depth valid</dt><dd id="depthValid">false</dd></div>
-        <div><dt>Depth semantics</dt><dd id="depthMode">relative unitless</dd></div>
-        <div><dt>Calibration state</dt><dd id="calibrationStatus">relative-only · 0 anchors</dd></div>
+        <div><dt>Depth semantics</dt><dd id="depthMode">native model meters pending</dd></div>
+        <div><dt>Calibration state</dt><dd id="calibrationStatus">manual fallback idle · 0 anchors</dd></div>
         <div><dt>Metric runtime</dt><dd id="metricRuntimeStatus">Metric depth unavailable</dd></div>
         <div><dt>Metric source</dt><dd id="metricSourceStatus">relative unitless · no active camera source</dd></div>
-        <div><dt>Distance probes</dt><dd id="probeStatus">off · metric calibration required</dd></div>
+        <div><dt>Distance probes</dt><dd id="probeStatus">off · metric result required</dd></div>
         <div><dt>Crossing</dt><dd>realZ &lt; virtualZ</dd></div>
         <div><dt>Camera</dt><dd id="cameraSize">off</dd></div>
         <div><dt>View mode</dt><dd id="viewMode">occlusion</dd></div>
@@ -116,7 +116,7 @@
     </section>
 
     <aside class="notice">
-      <b>Estimated meter output exists only while explicit known-distance manual calibration is valid.</b> A valid manual path is labeled manual calibration estimated meters. Relative mode is relative unitless and uses per-frame normalization for diagnosis only. No native metric source is used or claimed. Metric mode fits raw near-is-larger model output to 1/z = a·d + b from source-associated anchors; it never calibrates normalized depth, guesses scale, or fabricates confidence. Invalid, stale, mismatched, or lost evidence disables metric occlusion.
+      <b>Native model metric depth is automatic when its result is valid and exactly source-associated.</b> Known-plane calibration remains a manual fallback only for providers that return no native metric evidence. Rejected or mismatched native evidence disables metric behavior for that result and never silently falls back. Relative mode remains unitless and diagnostic. The manual fallback fits raw near-is-larger output to 1/z = a·d + b; it never calibrates normalized depth, guesses scale, or fabricates confidence. Invalid, stale, mismatched, or lost evidence disables metric occlusion.
     </aside>
   </main>
   <script type="module" src="./main.js"></script>

@@ -74,6 +74,8 @@ test('serves only the exact depth provider route through the standard TypeScript
     assert.equal(transformed.body, expected);
     assert.match(transformed.body, /export class WebGPUMonocularDepthProvider/);
     assert.match(transformed.body, /onnx-community\/depth-anything-v2-small/);
+    assert.match(transformed.body, /77ukhtar\/depth-anything-v2-metric-onnx/);
+    assert.match(transformed.body, /onnxruntime-web@1\.29\.0\/dist\/ort\.webgpu\.bundle\.min\.mjs/);
     assert.doesNotMatch(transformed.body, /export (?:type|interface)\b/);
 
     const head = await fetchLocal(port, '/depth-webgpu.js', 'HEAD');
@@ -141,12 +143,15 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(html, /12 Hz · 384×224 · max age 250 ms/);
   assert.match(html, /18 Hz · 480×270 · max age 200 ms/);
   assert.match(html, /Relative diagnostic/);
-  assert.match(html, /Metric calibrated/);
+  assert.match(html, /Metric automatic/);
   assert.match(html, /Track objects/);
   assert.match(html, /id="metricRuntimeStatus">Metric depth unavailable/);
   assert.match(html, /id="metricSourceStatus">relative unitless/);
-  assert.match(html, /manual calibration estimated meters/);
-  assert.match(html, /No native metric source is used or claimed/);
+  assert.match(html, /Native model metric depth is automatic/);
+  assert.match(html, /manual fallback only/);
+  assert.match(html, /never silently falls back/);
+  assert.match(html, /ONNX Runtime Web 1\.29\.0/);
+  assert.match(html, /77ukhtar\/depth-anything-v2-metric-onnx@a4259a3c45137b6eb32c84fcd95b86cd54c255b9/);
   assert.match(html, /click an object to attach an approximate distance label/i);
   assert.match(html, /never calibrates normalized depth/);
   assert.match(html, /Camera pixels stay on this device/);
@@ -155,6 +160,9 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   }
 
   assert.match(script, /from '\/depth-webgpu\.js'/);
+  assert.match(script, /METRIC_DEPTH_MODEL_ID/);
+  assert.match(script, /METRIC_DEPTH_MODEL_REVISION/);
+  assert.match(script, /ONNX_RUNTIME_WEB_VERSION/);
   assert.match(script, /new WebGPUMonocularDepthProvider/);
   assert.match(script, /await state\.provider\.initialize\(\)/);
   assert.match(script, /new VideoFrame\(elements\.camera, \{ timestamp \}\)/);
@@ -186,7 +194,8 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /captureTimestamp: result\.captureTimestamp/);
   assert.match(script, /depthMeters: sample\.depthMeters/);
   assert.match(script, /normalizedX: depthX/);
-  assert.match(script, /provenance: 'manual-known-plane'/);
+  assert.match(script, /state\.metricProvenance \?\? 'manual-known-plane'/);
+  assert.match(script, /'native-metric'/);
   for (const status of ['starting', 'unavailable', 'approximate', 'refining', 'stable']) {
     assert.match(script, new RegExp(`${status}: '${status}'`));
   }
@@ -210,6 +219,29 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /fitKnownPlaneCalibration\(/);
   assert.match(script, /applyKnownPlaneCalibration\(/);
   assert.match(script, /updateMetricCrossingMask\(/);
+  assert.match(script, /result\.nativeMetric !== undefined/);
+  assert.ok(
+    script.indexOf('result.nativeMetric !== undefined') < script.indexOf('if (!state.calibrationModel) return'),
+    'native metric is handled before the manual calibration fallback',
+  );
+  assert.match(script, /nativeMetric\.sourceFrameId !== result\.sourceFrameId/);
+  assert.match(script, /nativeMetric\.captureTimestamp !== result\.captureTimestamp/);
+  assert.match(script, /nativeMetric\.width !== result\.width/);
+  assert.match(script, /nativeMetric\.height !== result\.height/);
+  assert.match(script, /nativeMetric\.representation !== 'linear-z'/);
+  assert.match(script, /nativeMetric\.scale !== 'metric'/);
+  assert.match(script, /nativeMetric\.unit !== 'meter'/);
+  assert.match(script, /nativeMetric\.linearZMeters instanceof Float32Array/);
+  assert.match(script, /nativeMetric\.validity instanceof Uint8Array/);
+  assert.match(script, /nativeMetric\.linearZMeters\.length !== result\.width \* result\.height/);
+  assert.match(script, /nativeMetric\.validity\.length !== result\.width \* result\.height/);
+  assert.match(script, /nativeMetric\.validity\[index\] === 1/);
+  assert.match(script, /Number\.isFinite\(nativeMetric\.linearZMeters\[index\]\)/);
+  assert.match(script, /nativeMetric\.linearZMeters\[index\] > 0/);
+  assert.match(script, /nativeMetric\.linearZMeters,/);
+  assert.match(script, /nativeMetric\.validity,/);
+  assert.match(script, /clearMetricMask\(error\?\.message \|\| 'native-metric-rejected', 'provider-failure'\)/);
+  assert.match(script, /function metricResultAvailable\(\)/);
   assert.match(script, /rawInverseDepth: result\.rawInverseDepth/);
   assert.match(script, /camera-track:\$\{videoTrack\.id\}/);
   assert.match(script, /expectedSourceFrameId: result\.sourceFrameId/);
@@ -230,7 +262,7 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /trackMetricDepthSurface\(/);
   assert.match(script, /tracking lost · no stale value/);
   assert.match(script, /state\.previewFlipped \? 1 - probe\.x : probe\.x/);
-  assert.match(script, /metricLinearZ: application\.linearZ/);
+  assert.match(script, /metricLinearZ: linearZ/);
   assert.match(script, /metricSourceFrameId === state\.depthFrame\?\.sourceFrameId/);
   assert.match(style, /\.probe-label/);
   assert.match(style, /\.controls \{[^}]*grid-template-columns: repeat\(12, minmax\(0, 1fr\)\)/s);
