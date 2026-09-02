@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='24' fill='%2364e2bc'/%3E%3C/svg%3E">
-  <title>Synthetic WebGPU Occlusion Diagnostic</title>
+  <title>Real WebGPU Relative-Depth Occlusion Diagnostic</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -13,10 +13,10 @@
     <header>
       <div>
         <p class="eyebrow">WEB AR OCCLUSION · DIAGNOSTIC</p>
-        <h1>Synthetic depth, visible behavior.</h1>
-        <p class="lede">A dependency-free vertical slice for checking camera lifecycle, WebGPU compositing, and display/inference cadence separation.</p>
+        <h1>Real relative depth, visible behavior.</h1>
+        <p class="lede">A live diagnostic for camera lifecycle, pinned Transformers.js WebGPU monocular-depth inference, and relative-depth occlusion.</p>
       </div>
-      <span class="badge">DETERMINISTIC SYNTHETIC PROVIDER</span>
+      <span class="badge">REAL MONOCULAR DEPTH · WEBGPU</span>
     </header>
 
     <section class="stage-card" aria-label="Camera and WebGPU preview">
@@ -26,7 +26,7 @@
         <div class="start-screen" id="startScreen">
           <div class="capability-icon" aria-hidden="true">◉</div>
           <h2>Camera stays off until you start it</h2>
-          <p>This check requires a secure context, camera permission, and WebGPU. Frames remain on this device; the demo makes no network requests.</p>
+          <p>This check requires a secure context, camera permission, WebGPU, and network access to fetch the pinned runtime and model. Camera pixels stay on this device and are not uploaded.</p>
           <button class="primary" id="start" type="button">Start camera</button>
         </div>
         <div class="status-pill" id="status">Idle · camera off</div>
@@ -38,7 +38,7 @@
           <div class="segmented" id="viewControls">
             <button type="button" data-view="occlusion" aria-pressed="true">Occlusion</button>
             <button type="button" data-view="none" aria-pressed="false">No occlusion</button>
-            <button type="button" data-view="mask" aria-pressed="false">Mask view</button>
+            <button type="button" data-view="mask" aria-pressed="false">Depth view</button>
           </div>
         </fieldset>
         <fieldset>
@@ -56,14 +56,17 @@
     <section class="telemetry" aria-labelledby="telemetry-title">
       <div class="panel-heading">
         <div><p class="eyebrow">LIVE TELEMETRY</p><h2 id="telemetry-title">Diagnostic state</h2></div>
-        <span class="live-dot">LOCAL ONLY</span>
+        <span class="live-dot">LOCAL PIXELS</span>
       </div>
       <dl>
-        <div><dt>Provider</dt><dd id="provider">deterministic-synthetic</dd></div>
+        <div><dt>Provider lifecycle</dt><dd id="provider">idle</dd></div>
+        <div><dt>Backend</dt><dd id="backend">Transformers.js · WebGPU</dd></div>
+        <div><dt>Pinned model</dt><dd id="model">onnx-community/depth-anything-v2-small</dd></div>
         <div><dt>Requested / active</dt><dd id="profiles">balanced / balanced</dd></div>
         <div><dt>Display FPS</dt><dd id="fps">—</dd></div>
-        <div><dt>Synthetic inference</dt><dd id="inference">0 · 0.0 Hz</dd></div>
+        <div><dt>Accepted inference</dt><dd id="inference">0 · 0.0 Hz</dd></div>
         <div><dt>Depth age</dt><dd id="depthAge">—</dd></div>
+        <div><dt>Depth valid</dt><dd id="depthValid">false</dd></div>
         <div><dt>Camera</dt><dd id="cameraSize">off</dd></div>
         <div><dt>View mode</dt><dd id="viewMode">occlusion</dd></div>
         <div><dt>Lifecycle</dt><dd id="lifecycle">idle</dd></div>
@@ -71,8 +74,8 @@
     </section>
 
     <aside class="notice">
-      <b>Synthetic data — not benchmark evidence.</b>
-      The foreground boundary and metric-depth values are deterministic fake data. This demo does not exercise real inference, full core-engine integration, visual accuracy, or benchmark performance. It reports no measured GPU timing and produces no real depth.
+      <b>Relative monocular depth — diagnostic output, not metric depth.</b>
+      The pinned model estimates relative scene depth from live camera frames. No confidence or metric units are fabricated. Before a current source-associated result exists, or whenever depth is stale or invalid, occlusion is disabled and the depth view is zero.
     </aside>
   </main>
   <script type="module" src="./main.js"></script>

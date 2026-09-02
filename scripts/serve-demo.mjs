@@ -1,9 +1,13 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, extname, resolve, sep } from 'node:path';
 
-const demoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../apps/demo');
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const demoRoot = resolve(repositoryRoot, 'apps/demo');
+const depthModuleRoute = '/depth-webgpu.js';
+const depthModuleSource = resolve(repositoryRoot, 'packages/depth-webgpu/src/index.ts');
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
@@ -22,7 +26,7 @@ function send(response, status, body, contentType = 'text/plain; charset=utf-8')
   response.end(body);
 }
 
-function requestedFile(rawUrl) {
+function requestedPath(rawUrl) {
   let pathname;
   try {
     pathname = decodeURIComponent(rawUrl.split(/[?#]/, 1)[0]);
@@ -30,11 +34,22 @@ function requestedFile(rawUrl) {
     return null;
   }
   if (pathname.includes('\\') || pathname.includes('\0')) return null;
-  const parts = pathname.split('/');
-  if (parts.includes('..')) return null;
+  if (pathname.split('/').includes('..')) return null;
+  return pathname;
+}
+
+function requestedFile(pathname) {
   if (pathname === '/') pathname = '/index.html';
   const file = resolve(demoRoot, `.${pathname}`);
   return file.startsWith(`${demoRoot}${sep}`) ? file : null;
+}
+
+async function transformedDepthModule() {
+  const source = await readFile(depthModuleSource, 'utf8');
+  return stripTypeScriptTypes(source, {
+    mode: 'strip',
+    sourceUrl: pathToFileURL(depthModuleSource).href
+  });
 }
 
 export function createDemoServer() {
@@ -45,7 +60,23 @@ export function createDemoServer() {
       return;
     }
 
-    const file = requestedFile(request.url || '/');
+    const pathname = requestedPath(request.url || '/');
+    if (pathname === null) {
+      send(response, 400, 'Invalid path');
+      return;
+    }
+
+    if (pathname === depthModuleRoute) {
+      try {
+        const body = request.method === 'HEAD' ? undefined : await transformedDepthModule();
+        send(response, 200, body, 'text/javascript; charset=utf-8');
+      } catch {
+        send(response, 500, 'Depth module transform failed');
+      }
+      return;
+    }
+
+    const file = requestedFile(pathname);
     if (!file) {
       send(response, 400, 'Invalid path');
       return;
@@ -97,7 +128,7 @@ if (isDirect) {
       process.exitCode = 1;
     });
     server.listen(port, '127.0.0.1', () => {
-      console.log(`Synthetic WebGPU demo: http://127.0.0.1:${port}/`);
+      console.log(`Real relative-depth WebGPU demo: http://127.0.0.1:${port}/`);
     });
 
     let closing = false;
