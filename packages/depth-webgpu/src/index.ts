@@ -1,6 +1,6 @@
 export const TRANSFORMERS_JS_VERSION = "4.2.0";
 export const TRANSFORMERS_JS_ESM_URL =
-  "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/dist/transformers.web.min.js";
+  "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/+esm";
 export const DEPTH_MODEL_ID = "onnx-community/depth-anything-v2-small";
 export const DEPTH_MODEL_REVISION =
   "4472b7362082ad9968fee890ca0f1e5aca36b93d";

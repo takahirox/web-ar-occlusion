@@ -36,8 +36,10 @@ The browser demo uses a normal RGB camera; it does not require WebXR or a hardwa
 The provider dynamically imports the browser ESM build of Transformers.js `4.2.0` from this pinned URL:
 
 ```text
-https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/dist/transformers.web.min.js
+https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/+esm
 ```
+
+The jsDelivr `+esm` entry is required for direct browser loading because it rewrites package-internal bare imports such as the ONNX Runtime WebGPU entry to browser-resolvable CDN module URLs. The package's raw `dist/transformers.web.min.js` file still contains bare module specifiers and is not used by this unbundled demo.
 
 It runs `onnx-community/depth-anything-v2-small` at revision `4472b7362082ad9968fee890ca0f1e5aca36b93d` using q4 weights on the WebGPU backend. The model is Apache-2.0 according to its [pinned model card](https://huggingface.co/onnx-community/depth-anything-v2-small/blob/4472b7362082ad9968fee890ca0f1e5aca36b93d/README.md).
 

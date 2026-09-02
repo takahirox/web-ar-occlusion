@@ -105,8 +105,9 @@ test("pins the browser runtime and model revision", () => {
   assert.equal(TRANSFORMERS_JS_VERSION, "4.2.0");
   assert.equal(
     TRANSFORMERS_JS_ESM_URL,
-    "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/dist/transformers.web.min.js",
+    "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/+esm",
   );
+  assert.doesNotMatch(TRANSFORMERS_JS_ESM_URL, /\/dist\/transformers\.web\.min\.js$/);
   assert.equal(DEPTH_MODEL_ID, "onnx-community/depth-anything-v2-small");
   assert.equal(
     DEPTH_MODEL_REVISION,
