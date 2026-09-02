@@ -49,6 +49,7 @@ export interface MetricDistanceState {
   readonly status: MetricDistanceStatus;
   readonly observations: readonly Readonly<MetricDistanceObservation>[];
   readonly displayDepthMeters: number | null;
+  readonly lastPresentedDepthMeters: number | null;
   readonly medianDepthMeters: number | null;
   readonly stability: number;
   readonly coverage: number;
@@ -97,6 +98,7 @@ function unavailableState(
     status,
     observations: EMPTY_OBSERVATIONS,
     displayDepthMeters: null,
+    lastPresentedDepthMeters: null,
     medianDepthMeters: null,
     stability: 0,
     coverage: 0,
@@ -257,17 +259,29 @@ export function reduceMetricDistanceState(
         ? "approximate"
         : "refining";
 
-  let displayDepthMeters = medianDepthMeters;
-  if (observations.length === WINDOW_SIZE && state.displayDepthMeters !== null) {
+  let displayDepthMeters: number | null = medianDepthMeters;
+  let lastPresentedDepthMeters = medianDepthMeters;
+  if (
+    observations.length === WINDOW_SIZE &&
+    temporalRepeatability < STABILITY_THRESHOLD
+  ) {
+    displayDepthMeters = null;
+    lastPresentedDepthMeters = state.lastPresentedDepthMeters;
+  } else if (
+    observations.length === WINDOW_SIZE &&
+    state.lastPresentedDepthMeters !== null
+  ) {
     const limit = Math.max(0.05, 0.05 * medianDepthMeters);
     const smoothed =
-      state.displayDepthMeters +
-      SMOOTHING_ALPHA * (medianDepthMeters - state.displayDepthMeters);
+      state.lastPresentedDepthMeters +
+      SMOOTHING_ALPHA *
+        (medianDepthMeters - state.lastPresentedDepthMeters);
     displayDepthMeters = clamp(
       smoothed,
-      state.displayDepthMeters - limit,
-      state.displayDepthMeters + limit,
+      state.lastPresentedDepthMeters - limit,
+      state.lastPresentedDepthMeters + limit,
     );
+    lastPresentedDepthMeters = displayDepthMeters;
   }
 
   return Object.freeze({
@@ -275,6 +289,7 @@ export function reduceMetricDistanceState(
     status,
     observations,
     displayDepthMeters,
+    lastPresentedDepthMeters,
     medianDepthMeters,
     stability,
     coverage,

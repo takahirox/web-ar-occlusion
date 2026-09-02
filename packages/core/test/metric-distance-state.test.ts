@@ -35,6 +35,7 @@ function assertUnavailable(state, reason, message) {
   assert.equal(state.status, "unavailable", message);
   assert.equal(state.unavailableReason, reason);
   assert.equal(state.displayDepthMeters, null);
+  assert.equal(state.lastPresentedDepthMeters, null);
   assert.equal(state.medianDepthMeters, null);
   assert.deepEqual(state.observations, []);
   assert.equal(state.temporalRepeatability, 0);
@@ -48,6 +49,7 @@ test("starts without presenting a distance", () => {
 
   assert.equal(state.status, "starting");
   assert.equal(state.displayDepthMeters, null);
+  assert.equal(state.lastPresentedDepthMeters, null);
   assert.equal(state.medianDepthMeters, null);
   assert.deepEqual(state.observations, []);
   assert.equal(state.guidance, "acquire-target");
@@ -66,6 +68,8 @@ test("first and second observations request side-to-side movement", () => {
   state = accept(state, observation("frame-2", 2));
   assert.equal(state.status, "approximate");
   assert.equal(state.guidance, "move-slowly-side-to-side");
+  assert.equal(state.displayDepthMeters, 2);
+  assert.equal(state.lastPresentedDepthMeters, 2);
 });
 
 test("constant samples progress from approximate through refining to stable", () => {
@@ -117,6 +121,7 @@ test("alternating 1.8m and 2.2m samples remain noisy and never stable", () => {
       state,
       observation(`frame-${frame}`, frame, {
         depthMeters: frame % 2 === 0 ? 1.8 : 2.2,
+        normalizedX: frame % 2 === 0 ? 0.45 : 0.55,
       }),
     );
     assert.notEqual(state.status, "stable");
@@ -124,6 +129,8 @@ test("alternating 1.8m and 2.2m samples remain noisy and never stable", () => {
 
   assert.equal(state.stability, 0);
   assert.equal(state.guidance, "hold-steady-when-noisy");
+  assert.equal(state.displayDepthMeters, null);
+  assert.notEqual(state.lastPresentedDepthMeters, null);
 });
 
 test("no horizontal travel caps repeatability at one half", () => {
@@ -139,6 +146,8 @@ test("no horizontal travel caps repeatability at one half", () => {
   assert.equal(state.temporalRepeatability, 0.5);
   assert.equal(state.guidance, "move-slowly-side-to-side");
   assert.notEqual(state.status, "stable");
+  assert.equal(state.displayDepthMeters, null);
+  assert.equal(state.lastPresentedDepthMeters, 2);
 });
 
 test("bad observations and invalidations immediately clear metric output", () => {
@@ -247,24 +256,45 @@ test("the next valid exact-source sample restarts as approximate", () => {
   assert.equal(state.displayDepthMeters, 2);
 });
 
-test("each smoothing step is bounded by five centimeters or five percent", () => {
+test("recovery after withheld output remains bounded", () => {
   let state = createMetricDistanceState(SOURCE_ID);
 
-  for (let frame = 1; frame <= 12; frame += 1) {
+  for (let frame = 1; frame <= 8; frame += 1) {
     state = accept(
       state,
       observation(`frame-${frame}`, frame, {
-        depthMeters: frame <= 8 ? 2 : 10,
+        depthMeters: frame % 2 === 0 ? 1.8 : 2.2,
       }),
     );
   }
 
-  const previousDisplay = state.displayDepthMeters;
-  state = accept(state, observation("frame-13", 13, { depthMeters: 10 }));
-  const limit = Math.max(0.05, 0.05 * state.medianDepthMeters);
+  assert.equal(state.displayDepthMeters, null);
+  const previousDisplay = state.lastPresentedDepthMeters;
+  let recoveredDisplay = null;
+  let recoveredMedian = null;
+
+  for (let frame = 9; frame <= 16; frame += 1) {
+    state = accept(
+      state,
+      observation(`frame-${frame}`, frame, {
+        depthMeters: 10,
+        normalizedX: frame % 2 === 0 ? 0.45 : 0.55,
+      }),
+    );
+    if (state.displayDepthMeters !== null) {
+      recoveredDisplay = state.displayDepthMeters;
+      recoveredMedian = state.medianDepthMeters;
+      break;
+    }
+  }
+
+  assert.notEqual(previousDisplay, null);
+  assert.notEqual(recoveredDisplay, null);
+  assert.notEqual(recoveredMedian, null);
+  const limit = Math.max(0.05, 0.05 * recoveredMedian);
 
   assert.ok(
-    Math.abs(state.displayDepthMeters - previousDisplay) <=
+    Math.abs(recoveredDisplay - previousDisplay) <=
       limit + Number.EPSILON,
   );
 });
