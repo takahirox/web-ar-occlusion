@@ -1,7 +1,12 @@
 import {
+  DEPTH_MODEL_DTYPE,
+  DEPTH_MODEL_ID,
+  DEPTH_MODEL_REVISION,
   METRIC_DEPTH_MODEL_ID,
   METRIC_DEPTH_MODEL_REVISION,
   ONNX_RUNTIME_WEB_VERSION,
+  TRANSFORMERS_JS_VERSION,
+  createTransformersDepthRuntime,
   WebGPUMonocularDepthProvider
 } from '/depth-webgpu.js';
 import {
@@ -45,6 +50,7 @@ const state = {
   view: 'occlusion', mode: 'metric', previewFlipped: true, device: null, context: null, pipeline: null,
   uniformBuffer: null, bindGroup: null, placeholderDepth: null, depthFrame: null, depthValid: false,
   depthReason: 'no result', provider: null, providerState: 'idle', animation: 0, sourceId: null,
+  providerKind: 'native-metric', nativeFailureReason: null,
   inferenceTimer: 0, inferencePending: false, inferenceRequest: 0, acceptedRequest: 0,
   inferenceCount: 0, inferenceWindowCount: 0, inferenceRate: 0, lastDepthTimestamp: 0,
   profileGeneration: 0, fpsFrames: 0, fps: 0, lastFpsSample: performance.now(),
@@ -76,6 +82,12 @@ const METRIC_GUIDANCE_LABELS = Object.freeze({
   'move-slowly-side-to-side': 'move slowly side to side',
   'hold-steady-when-noisy': 'hold steady while readings are noisy',
   'stable-repeatability-accuracy-unverified': 'repeatability stable; accuracy unverified'
+});
+const REFINEMENT_GUIDANCE_LABELS = Object.freeze({
+  'collecting-temporal-evidence': 'collecting temporal evidence',
+  'passive-refinement-active': 'passive temporal alignment active; absolute accuracy unverified',
+  'temporally-stable-not-ground-truth': 'temporally stable; absolute accuracy unverified',
+  'using-unrefined-native-prior': 'move the camera slowly side to side'
 });
 
 function setLifecycle(value, message = value, error = false) {
@@ -455,13 +467,17 @@ function refreshDepthValidity(now = performance.now()) {
 }
 
 function metricRuntimeSummary() {
-  if (!metricResultAvailable()) return 'Metric depth: unavailable · awaiting valid source-associated evidence';
+  if (!metricResultAvailable()) {
+    return state.providerKind === 'relative-manual-fallback'
+      ? 'Metric depth: unavailable · native model failed · capture two manual fallback anchors'
+      : 'Metric depth: unavailable · awaiting valid source-associated evidence';
+  }
   if (state.metricRefinement) {
     const refinement = state.metricRefinement;
     const residual = refinement.normalizedResidual === null
       ? 'residual pending'
       : `normalized residual ${(refinement.normalizedResidual * 100).toFixed(1)}%`;
-    return `Metric depth: ${refinement.stage} · scale ${refinement.scale.toFixed(3)} · shift ${refinement.shiftMeters.toFixed(3)} m · support ${refinement.inlierCount}/${refinement.supportCount} · ${residual} · ${refinement.guidance}`;
+    return `Metric depth: ${refinement.stage} · scale ${refinement.scale.toFixed(3)} · shift ${refinement.shiftMeters.toFixed(3)} m · support ${refinement.inlierCount}/${refinement.supportCount} · ${residual} · ${REFINEMENT_GUIDANCE_LABELS[refinement.guidance]}`;
   }
   if (state.probes.length === 0) return 'Metric depth: manual fallback · add a tracked object';
   const metricStates = state.probes.map((probe) => probe.metricState);
@@ -488,7 +504,7 @@ function updateTelemetry(now = performance.now()) {
   elements.viewMode.textContent = state.view;
   elements.metricRuntimeStatus.textContent = metricRuntimeSummary();
   elements.metricSourceStatus.textContent = state.sourceId
-    ? (state.metricProvenance === 'native-metric' ? 'native model · metric m' : (state.metricProvenance === 'manual-known-plane' ? 'manual fallback · estimated m' : 'metric evidence pending'))
+    ? (state.metricProvenance === 'native-metric' ? 'native model · metric m' : (state.metricProvenance === 'manual-known-plane' ? 'manual fallback · estimated m' : (state.providerKind === 'relative-manual-fallback' ? 'relative provider · manual fallback required' : 'metric evidence pending')))
     : 'relative unitless · no active camera source';
   updateCalibrationControls();
   if (state.lifecycle === 'running') {
@@ -783,11 +799,32 @@ async function startCamera() {
     elements.camera.srcObject = stream;
     await elements.camera.play();
     await waitForVideo(generation);
+    state.providerKind = 'native-metric';
+    state.nativeFailureReason = null;
     state.provider = new WebGPUMonocularDepthProvider({ device: state.device });
     state.providerState = state.provider.state;
     setLifecycle('model-loading', `Loading pinned ${METRIC_DEPTH_MODEL_ID} on WebGPU…`);
     updateTelemetry();
-    await state.provider.initialize();
+    try {
+      await state.provider.initialize();
+    } catch (nativeError) {
+      if (generation !== state.generation) return;
+      await state.provider.dispose();
+      if (generation !== state.generation) return;
+      state.providerKind = 'relative-manual-fallback';
+      state.nativeFailureReason = nativeError?.message || 'native metric initialization failed';
+      state.calibrationReason = 'native-metric-unavailable-manual-fallback-required';
+      state.provider = new WebGPUMonocularDepthProvider({
+        device: state.device,
+        runtime: createTransformersDepthRuntime()
+      });
+      state.providerState = state.provider.state;
+      elements.backend.textContent = `Transformers.js ${TRANSFORMERS_JS_VERSION} · WebGPU · manual fallback`;
+      elements.model.textContent = `${DEPTH_MODEL_ID}@${DEPTH_MODEL_REVISION} · ${DEPTH_MODEL_DTYPE}`;
+      setLifecycle('model-loading', `Native metric unavailable; loading pinned manual fallback ${DEPTH_MODEL_ID}…`);
+      updateTelemetry();
+      await state.provider.initialize();
+    }
     if (generation !== state.generation) return;
     state.providerState = state.provider.state;
     state.inferenceCount = 0;
@@ -796,7 +833,12 @@ async function startCamera() {
     state.lastDepthTimestamp = 0;
     state.lastFpsSample = performance.now();
     state.depthReason = 'awaiting first result';
-    setLifecycle('running', 'Running · awaiting first native metric-depth result');
+    setLifecycle(
+      'running',
+      state.providerKind === 'native-metric'
+        ? 'Running · awaiting first native metric-depth result'
+        : 'Running · relative depth ready · capture two manual fallback anchors'
+    );
     elements.startScreen.classList.add('hidden');
     elements.stop.disabled = false;
     scheduleInference();
@@ -841,6 +883,10 @@ function stopCamera(showScreen = true) {
     depthFrame: null, depthValid: false, inferencePending: false, lastDepthTimestamp: 0,
     inferenceRate: 0, sourceId: null
   });
+  state.providerKind = 'native-metric';
+  state.nativeFailureReason = null;
+  elements.backend.textContent = `ONNX Runtime Web ${ONNX_RUNTIME_WEB_VERSION} · WebGPU`;
+  elements.model.textContent = `${METRIC_DEPTH_MODEL_ID}@${METRIC_DEPTH_MODEL_REVISION}`;
   if (showScreen) {
     elements.startScreen.classList.remove('hidden');
     elements.start.disabled = false;
