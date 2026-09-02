@@ -14,6 +14,14 @@
     "test": "node --test packages/core/test/*.test.ts",
     "demo": "node scripts/serve-demo.mjs",
     "demo:test": "node --test apps/demo/test/*.test.mjs",
-    "check": "node --check packages/core/src/index.ts && node --check packages/depth-webgpu/src/index.ts && node --check packages/depth-webxr/src/index.ts && node --check packages/motion/src/index.ts && node --check packages/three/src/index.ts && node --check packages/babylon/src/index.ts && node --check apps/demo/main.js && node --check scripts/serve-demo.mjs"
+    "check": "node --check packages/core/src/index.ts && node --check packages/core/src/quality.ts && node --check packages/core/src/quality-governance.ts && node --check packages/core/src/quality-cli.ts && node --check packages/depth-webgpu/src/index.ts && node --check packages/depth-webxr/src/index.ts && node --check packages/motion/src/index.ts && node --check packages/three/src/index.ts && node --check packages/babylon/src/index.ts && node --check apps/demo/main.js && node --check scripts/serve-demo.mjs",
+    "quality:test": "node --test packages/core/test/quality*.test.ts",
+    "quality:verify": "node packages/core/src/quality-cli.ts verify",
+    "quality:evaluate": "node packages/core/src/quality-cli.ts evaluate",
+    "quality:safety": "node packages/core/src/quality-cli.ts safety",
+    "quality:compare": "node packages/core/src/quality-cli.ts compare",
+    "quality:gate": "node packages/core/src/quality-cli.ts gate",
+    "quality:summary": "node packages/core/src/quality-cli.ts ai-summary",
+    "quality:review": "node packages/core/src/quality-cli.ts review-manifest"
   }
 }

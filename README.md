@@ -20,6 +20,9 @@ The contracts, architecture, defaults, control rules, validation protocol, and a
 - [Issue #1 completion addendum](docs/issue-1-completion.md)
 - [Issue and checklist traceability](docs/traceability.md)
 - [Normative implementation plan](docs/implementation-plan.md)
+- [Deterministic quality evaluation](docs/quality-evaluation.md)
+
+The dependency-free quality evaluator records digest-bound corpus/run provenance, deterministic depth, confidence, mask, temporal, rendered, and safety evidence, and a fail-closed multi-objective comparison. It also produces bounded review-only summaries that an AI worker can use to propose the next experiment without gaining gate or promotion authority. Run `npm run quality:test` for its deterministic suite; the quality commands are documented in the linked guide. Synthetic results remain development evidence and are never device or benchmark results.
 
 Remaining major work includes deterministic WebGPU fixtures and a fake provider, canonical GPU conversion, reprojection and disocclusion, stabilization/refinement/compositing, adaptive integration, the browser demo, renderer adapters, a real-provider experiment, and reference-device validation. Every numeric value in these documents is an initial hypothesis until evidence from the reference devices exists; no value is presented as a measured result.
 
