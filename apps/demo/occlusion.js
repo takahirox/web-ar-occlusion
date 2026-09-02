@@ -26,3 +26,26 @@ export function isDiagnosticSphereFragmentOccluded(
     Number.isFinite(sphereRelativeDepth) &&
     realRelativeDepth > mapSphereRelativeDepthForDiagnosticOcclusion(sphereRelativeDepth);
 }
+
+export function updateMetricCrossing(previousOccluded, realZ, virtualZ, entryHysteresis, exitHysteresis, valid) {
+  if (!valid || !Number.isFinite(realZ) || realZ <= 0 || !Number.isFinite(virtualZ) || virtualZ <= 0 || !Number.isFinite(entryHysteresis) || entryHysteresis < 0 || !Number.isFinite(exitHysteresis) || exitHysteresis < 0) return false;
+  return previousOccluded
+    ? realZ < virtualZ + exitHysteresis
+    : realZ < virtualZ - entryHysteresis;
+}
+
+export function updateMetricCrossingMask(previous, linearZ, validity, virtualZ, entryHysteresis, exitHysteresis) {
+  if (linearZ.length !== validity.length || (previous !== null && previous.length !== linearZ.length)) throw new TypeError("crossing buffers must have matching lengths");
+  const output = new Uint8Array(linearZ.length);
+  for (let index = 0; index < output.length; index += 1) {
+    output[index] = updateMetricCrossing(
+      previous?.[index] === 1,
+      linearZ[index],
+      virtualZ,
+      entryHysteresis,
+      exitHysteresis,
+      validity[index] === 1,
+    ) ? 255 : 0;
+  }
+  return output;
+}

@@ -1,5 +1,7 @@
 # Web AR Occlusion
 
+Issue #3's dependency-free raw inverse-depth calibration design, fail-closed metric contract, multi-threshold evaluation, and limitations are documented in [docs/issue-3-approach-b.md](docs/issue-3-approach-b.md).
+
 This repository contains the final MVP specification and an in-progress WebGPU-based web AR occlusion engine. It includes an experimental real monocular-depth browser diagnostic, but it does not contain benchmark or reference-device results.
 
 ## Implementation status

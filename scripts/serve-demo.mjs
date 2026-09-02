@@ -8,6 +8,8 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const demoRoot = resolve(repositoryRoot, 'apps/demo');
 const depthModuleRoute = '/depth-webgpu.js';
 const depthModuleSource = resolve(repositoryRoot, 'packages/depth-webgpu/src/index.ts');
+const calibrationModuleRoute = '/metric-calibration.js';
+const calibrationModuleSource = resolve(repositoryRoot, 'packages/core/src/metric-calibration.ts');
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
@@ -44,11 +46,11 @@ function requestedFile(pathname) {
   return file.startsWith(`${demoRoot}${sep}`) ? file : null;
 }
 
-async function transformedDepthModule() {
-  const source = await readFile(depthModuleSource, 'utf8');
+async function transformedModule(sourcePath) {
+  const source = await readFile(sourcePath, 'utf8');
   return stripTypeScriptTypes(source, {
     mode: 'strip',
-    sourceUrl: pathToFileURL(depthModuleSource).href
+    sourceUrl: pathToFileURL(sourcePath).href
   });
 }
 
@@ -66,9 +68,9 @@ export function createDemoServer() {
       return;
     }
 
-    if (pathname === depthModuleRoute) {
+    if (pathname === depthModuleRoute || pathname === calibrationModuleRoute) {
       try {
-        const body = request.method === 'HEAD' ? undefined : await transformedDepthModule();
+        const body = request.method === 'HEAD' ? undefined : await transformedModule(pathname === depthModuleRoute ? depthModuleSource : calibrationModuleSource);
         send(response, 200, body, 'text/javascript; charset=utf-8');
       } catch {
         send(response, 500, 'Depth module transform failed');

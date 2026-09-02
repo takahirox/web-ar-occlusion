@@ -10,7 +10,9 @@ import {
   DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
   DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
   isDiagnosticSphereFragmentOccluded,
-  mapSphereRelativeDepthForDiagnosticOcclusion
+  mapSphereRelativeDepthForDiagnosticOcclusion,
+  updateMetricCrossing,
+  updateMetricCrossingMask
 } from '../occlusion.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,7 +49,7 @@ async function withServer(run) {
 
 test('serves demo assets with correct MIME and no-store headers', async () => {
   await withServer(async (port) => {
-    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript']]) {
+    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript'], ['/metric-calibration.js', 'text/javascript']]) {
       const response = await fetchLocal(port, path);
       assert.equal(response.status, 200);
       assert.match(response.headers['content-type'], new RegExp(`^${mime}`));
@@ -112,8 +114,9 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(html, /8 Hz · 320×192 · max age 250 ms/);
   assert.match(html, /12 Hz · 384×224 · max age 250 ms/);
   assert.match(html, /18 Hz · 480×270 · max age 200 ms/);
-  assert.match(html, /Real relative depth/);
-  assert.match(html, /not metric depth/i);
+  assert.match(html, /Relative diagnostic/);
+  assert.match(html, /Metric calibrated/);
+  assert.match(html, /never calibrates normalized depth/);
   assert.match(html, /Camera pixels stay on this device/);
   for (const id of ['provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -193,4 +196,19 @@ test('diagnostic comparison preserves partial ordering and fails closed for inva
     assert.equal(isDiagnosticSphereFragmentOccluded(1, sphereRelativeDepth, false), false);
   }
   assert.equal(isDiagnosticSphereFragmentOccluded(Number.NaN, 0, true), false);
+});
+
+test('metric crossing uses strict realZ < virtualZ with temporal entry and exit hysteresis', () => {
+  assert.equal(updateMetricCrossing(false, 1.46, 1.5, 0.05, 0.1, true), false);
+  assert.equal(updateMetricCrossing(false, 1.44, 1.5, 0.05, 0.1, true), true);
+  assert.equal(updateMetricCrossing(true, 1.55, 1.5, 0.05, 0.1, true), true);
+  assert.equal(updateMetricCrossing(true, 1.61, 1.5, 0.05, 0.1, true), false);
+  assert.equal(updateMetricCrossing(true, 1, 1.5, 0.05, 0.1, false), false);
+});
+
+test('metric crossing mask preserves per-pixel temporal state and fails closed', () => {
+  const entered = updateMetricCrossingMask(null, new Float32Array([1, 2, 1]), new Uint8Array([1, 1, 0]), 1.5, 0.05, 0.1);
+  assert.deepEqual([...entered], [255, 0, 0]);
+  const retained = updateMetricCrossingMask(new Uint8Array([1, 0, 1]), new Float32Array([1.55, 1, 1]), new Uint8Array([1, 1, 0]), 1.5, 0.05, 0.1);
+  assert.deepEqual([...retained], [255, 255, 0]);
 });

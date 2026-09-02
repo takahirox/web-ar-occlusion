@@ -72,6 +72,8 @@ interface ActiveInference extends PendingInference {
 
 export interface ProviderDepthFrame {
   readonly depth: GPUTexture;
+  readonly rawInverseDepth: Float32Array;
+  readonly rawOrientation: "near-is-larger";
   readonly confidence?: GPUTexture;
   readonly representation: "inverse-z";
   readonly scale: "relative";
@@ -188,6 +190,16 @@ export function normalizeRelativeDepth(
       orientation === "near-is-larger" ? increasing : 1 - increasing;
   }
   return normalized;
+}
+
+export function preserveRawNearIsLargerDepth(values: ArrayLike<number>, orientation: RawDepthOrientation): Float32Array {
+  if (orientation !== "near-is-larger") throw new TypeError("Metric calibration requires stable near-is-larger raw output");
+  const raw = new Float32Array(values.length);
+  for (let index = 0; index < values.length; index += 1) {
+    const value = Number(values[index]);
+    raw[index] = Number.isFinite(value) ? value : Number.NaN;
+  }
+  return raw;
 }
 
 function paddedRows(
@@ -468,7 +480,8 @@ export class WebGPUMonocularDepthProvider {
     ) {
       throw new TypeError("Runtime returned invalid depth dimensions");
     }
-    const normalized = normalizeRelativeDepth(result.data, result.orientation);
+    const rawInverseDepth = preserveRawNearIsLargerDepth(result.data, result.orientation);
+    const normalized = normalizeRelativeDepth(rawInverseDepth, result.orientation);
     const created: GPUTexture[] = [];
     try {
       const depth = this.#upload("r32float", normalized, result.width, result.height);
@@ -476,6 +489,8 @@ export class WebGPUMonocularDepthProvider {
       for (const texture of created) this.#textures.add(texture);
       return {
         depth,
+        rawInverseDepth,
+        rawOrientation: "near-is-larger",
         representation: "inverse-z",
         scale: "relative",
         unit: null,

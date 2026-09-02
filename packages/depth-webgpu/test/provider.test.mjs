@@ -11,6 +11,7 @@ import {
   WebGPUMonocularDepthProvider,
   captureVideoFrame,
   normalizeRelativeDepth,
+  preserveRawNearIsLargerDepth,
 } from "../src/index.ts";
 
 function deferred() {
@@ -101,6 +102,12 @@ const result = (data = [1, 2, 3, 4]) => ({
   orientation: "near-is-larger",
 });
 
+test("preserves finite raw near-is-larger signal without per-frame normalization", () => {
+  assert.deepEqual([...preserveRawNearIsLargerDepth([-4, 0.5, 9], "near-is-larger")], [-4, 0.5, 9]);
+  assert.equal(Number.isNaN(preserveRawNearIsLargerDepth([NaN], "near-is-larger")[0]), true);
+  assert.throws(() => preserveRawNearIsLargerDepth([1, 2], "near-is-smaller"), /near-is-larger/);
+});
+
 test("pins the browser runtime and model revision", () => {
   assert.equal(TRANSFORMERS_JS_VERSION, "4.2.0");
   assert.equal(
@@ -185,6 +192,8 @@ test("forwards pixels and preserves association while uploading padded textures"
   assert.equal(output.representation, "inverse-z");
   assert.equal(output.scale, "relative");
   assert.equal(output.unit, null);
+  assert.equal(output.rawOrientation, "near-is-larger");
+  assert.deepEqual([...output.rawInverseDepth], [1, 3, 2, NaN]);
   assert.equal(output.confidence, undefined);
   assert.equal(releases, 1);
 
