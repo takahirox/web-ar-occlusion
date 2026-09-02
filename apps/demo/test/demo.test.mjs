@@ -19,6 +19,7 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const providerSource = resolve(root, '../../packages/depth-webgpu/src/index.ts');
+const metricDistanceStateSource = resolve(root, '../../packages/core/src/metric-distance-state.ts');
 
 function fetchLocal(port, path, method = 'GET') {
   return new Promise((resolveResponse, reject) => {
@@ -51,7 +52,7 @@ async function withServer(run) {
 
 test('serves demo assets with correct MIME and no-store headers', async () => {
   await withServer(async (port) => {
-    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript'], ['/metric-calibration.js', 'text/javascript']]) {
+    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript'], ['/metric-calibration.js', 'text/javascript'], ['/metric-distance-state.js', 'text/javascript']]) {
       const response = await fetchLocal(port, path);
       assert.equal(response.status, 200);
       assert.match(response.headers['content-type'], new RegExp(`^${mime}`));
@@ -79,6 +80,29 @@ test('serves only the exact depth provider route through the standard TypeScript
     assert.equal(head.status, 200);
     assert.equal(head.body, '');
     for (const path of ['/packages/depth-webgpu/src/index.ts', '/depth-webgpu.js/index.ts']) {
+      assert.equal((await fetchLocal(port, path)).status, 404);
+    }
+  });
+});
+
+test('serves only the exact metric distance state route through the standard TypeScript stripper', async () => {
+  const source = await readFile(metricDistanceStateSource, 'utf8');
+  const expected = stripTypeScriptTypes(source, {
+    mode: 'strip',
+    sourceUrl: pathToFileURL(metricDistanceStateSource).href
+  });
+  await withServer(async (port) => {
+    const transformed = await fetchLocal(port, '/metric-distance-state.js');
+    assert.equal(transformed.status, 200);
+    assert.equal(transformed.body, expected);
+    assert.match(transformed.body, /export function createMetricDistanceState/);
+    assert.match(transformed.body, /export function reduceMetricDistanceState/);
+    assert.doesNotMatch(transformed.body, /export (?:type|interface)\b/);
+
+    const head = await fetchLocal(port, '/metric-distance-state.js', 'HEAD');
+    assert.equal(head.status, 200);
+    assert.equal(head.body, '');
+    for (const path of ['/packages/core/src/metric-distance-state.ts', '/metric-distance-state.js/metric-distance-state.ts']) {
       assert.equal((await fetchLocal(port, path)).status, 404);
     }
   });
@@ -119,10 +143,14 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(html, /Relative diagnostic/);
   assert.match(html, /Metric calibrated/);
   assert.match(html, /Track objects/);
+  assert.match(html, /id="metricRuntimeStatus">Metric depth unavailable/);
+  assert.match(html, /id="metricSourceStatus">relative unitless/);
+  assert.match(html, /manual calibration estimated meters/);
+  assert.match(html, /No native metric source is used or claimed/);
   assert.match(html, /click an object to attach an approximate distance label/i);
   assert.match(html, /never calibrates normalized depth/);
   assert.match(html, /Camera pixels stay on this device/);
-  for (const id of ['modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis', 'exitHysteresis', 'probeOverlay', 'probeControls', 'clearProbes', 'probeStatus', 'depthMode', 'calibrationStatus', 'provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
+  for (const id of ['modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis', 'exitHysteresis', 'probeOverlay', 'probeControls', 'clearProbes', 'probeStatus', 'depthMode', 'calibrationStatus', 'metricRuntimeStatus', 'metricSourceStatus', 'provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
 
@@ -150,6 +178,34 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
 
   assert.match(script, /from '\.\/occlusion\.js'/);
   assert.match(script, /from '\/metric-calibration\.js'/);
+  assert.match(script, /from '\/metric-distance-state\.js'/);
+  assert.match(script, /metricState: createMetricDistanceState\(state\.sourceId\)/);
+  assert.match(script, /probe\.metricState = reduceMetricDistanceState/);
+  assert.match(script, /sourceId: state\.sourceId/);
+  assert.match(script, /sourceFrameId: result\.sourceFrameId/);
+  assert.match(script, /captureTimestamp: result\.captureTimestamp/);
+  assert.match(script, /depthMeters: sample\.depthMeters/);
+  assert.match(script, /normalizedX: depthX/);
+  assert.match(script, /provenance: 'manual-known-plane'/);
+  for (const status of ['starting', 'unavailable', 'approximate', 'refining', 'stable']) {
+    assert.match(script, new RegExp(`${status}: '${status}'`));
+  }
+  for (const guidance of [
+    'acquire target',
+    'keep target framed',
+    'move slowly side to side',
+    'hold steady while readings are noisy',
+    'repeatability stable; accuracy unverified'
+  ]) {
+    assert.match(script, new RegExp(guidance));
+  }
+  for (const invalidation of ['tracking-lost', 'calibration-lost', 'stale-result', 'provider-failure']) {
+    assert.match(script, new RegExp(invalidation));
+  }
+  assert.match(script, /recreateProbeMetricStates\(sourceId\)/);
+  assert.match(script, /const displayDepthMeters = metricState\.displayDepthMeters/);
+  assert.match(script, /temporal repeatability/);
+  assert.doesNotMatch(script, /measurement\.(?:median|current)|history\.push/);
   assert.match(script, /captureKnownPlaneAnchor\(/);
   assert.match(script, /fitKnownPlaneCalibration\(/);
   assert.match(script, /applyKnownPlaneCalibration\(/);

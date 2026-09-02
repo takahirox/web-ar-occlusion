@@ -38,6 +38,14 @@ Remaining production work includes deterministic WebGPU fixtures and fake-provid
 
 The browser demo uses a normal RGB camera; it does not require WebXR or a hardware depth camera. It creates WebCodecs `VideoFrame` objects from the camera video, copies their RGBA pixels locally, and submits them asynchronously to `@web-ar-occlusion/depth-webgpu`. Rendering continues on `requestAnimationFrame` without awaiting inference.
 
+### Passive metric state and current zero-shot limitation
+
+The demo evaluates source-associated metric samples with a deterministic five-state runtime: `starting`, `approximate`, `refining`, `stable`, and `unavailable`. Each tracked label uses an eight-observation median/MAD window, image-plane horizontal evidence, three consecutive qualifying windows before promotion to `stable`, and bounded display updates. Its percentage is **temporal repeatability**, not model accuracy or sensor confidence. Tracking loss, stale results, calibration loss, provider failure, source mismatch, or invalid samples clear the displayed distance immediately. Guidance first asks the user to keep the target framed, move slowly side to side, or hold steady.
+
+No native zero-shot metric provider is enabled. The pinned Depth Anything V2 model remains relative and unitless. The screened DepthPro ONNX artifact is not used because direct-browser WebGPU feasibility, required focal-length postprocessing, output orientation, and camera-Z meter semantics have not all been verified for this runtime. Explicit known-plane calibration therefore remains the only meter-producing path and is labeled as an estimated manual fallback. Issue #4's RGB-only zero-interaction metric acceptance criterion remains blocked until a deployable model satisfies those checks; relative values are never relabeled as meters.
+
+Deterministic evaluation covers time-to-state in observations, temporal dispersion, horizontal evidence, display-step bounds, fail-closed invalidation, and source association. Recorded metric evaluation continues to report camera-Z MAE/RMSE/AbsRel and crossing thresholds when reference metric data is supplied. Synthetic fixtures are test evidence, not benchmark claims.
+
 The provider dynamically imports the browser ESM build of Transformers.js `4.2.0` from this pinned URL:
 
 ```text

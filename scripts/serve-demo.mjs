@@ -10,6 +10,8 @@ const depthModuleRoute = '/depth-webgpu.js';
 const depthModuleSource = resolve(repositoryRoot, 'packages/depth-webgpu/src/index.ts');
 const calibrationModuleRoute = '/metric-calibration.js';
 const calibrationModuleSource = resolve(repositoryRoot, 'packages/core/src/metric-calibration.ts');
+const metricDistanceStateModuleRoute = '/metric-distance-state.js';
+const metricDistanceStateModuleSource = resolve(repositoryRoot, 'packages/core/src/metric-distance-state.ts');
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
@@ -68,9 +70,14 @@ export function createDemoServer() {
       return;
     }
 
-    if (pathname === depthModuleRoute || pathname === calibrationModuleRoute) {
+    if (pathname === depthModuleRoute || pathname === calibrationModuleRoute || pathname === metricDistanceStateModuleRoute) {
       try {
-        const body = request.method === 'HEAD' ? undefined : await transformedModule(pathname === depthModuleRoute ? depthModuleSource : calibrationModuleSource);
+        const sourcePath = pathname === depthModuleRoute
+          ? depthModuleSource
+          : pathname === calibrationModuleRoute
+            ? calibrationModuleSource
+            : metricDistanceStateModuleSource;
+        const body = request.method === 'HEAD' ? undefined : await transformedModule(sourcePath);
         send(response, 200, body, 'text/javascript; charset=utf-8');
       } catch {
         send(response, 500, 'Depth module transform failed');

@@ -103,8 +103,10 @@
         <div><dt>Accepted inference</dt><dd id="inference">0 · 0.0 Hz</dd></div>
         <div><dt>Depth age</dt><dd id="depthAge">—</dd></div>
         <div><dt>Depth valid</dt><dd id="depthValid">false</dd></div>
-        <div><dt>Depth semantics</dt><dd id="depthMode">relative diagnostic</dd></div>
+        <div><dt>Depth semantics</dt><dd id="depthMode">relative unitless</dd></div>
         <div><dt>Calibration state</dt><dd id="calibrationStatus">relative-only · 0 anchors</dd></div>
+        <div><dt>Metric runtime</dt><dd id="metricRuntimeStatus">Metric depth unavailable</dd></div>
+        <div><dt>Metric source</dt><dd id="metricSourceStatus">relative unitless · no active camera source</dd></div>
         <div><dt>Distance probes</dt><dd id="probeStatus">off · metric calibration required</dd></div>
         <div><dt>Crossing</dt><dd>realZ &lt; virtualZ</dd></div>
         <div><dt>Camera</dt><dd id="cameraSize">off</dd></div>
@@ -114,7 +116,7 @@
     </section>
 
     <aside class="notice">
-      <b>Metric output exists only while explicit known-distance calibration is valid.</b> Relative mode uses per-frame normalization for diagnosis only. Metric mode fits raw near-is-larger model output to 1/z = a·d + b from source-associated anchors; it never calibrates normalized depth, guesses scale, or fabricates confidence. Invalid, stale, mismatched, or lost evidence disables metric occlusion.
+      <b>Estimated meter output exists only while explicit known-distance manual calibration is valid.</b> A valid manual path is labeled manual calibration estimated meters. Relative mode is relative unitless and uses per-frame normalization for diagnosis only. No native metric source is used or claimed. Metric mode fits raw near-is-larger model output to 1/z = a·d + b from source-associated anchors; it never calibrates normalized depth, guesses scale, or fabricates confidence. Invalid, stale, mismatched, or lost evidence disables metric occlusion.
     </aside>
   </main>
   <script type="module" src="./main.js"></script>
