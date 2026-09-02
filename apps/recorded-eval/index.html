@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Recorded RGB-D prediction collector</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #07110f; color: #e8f4f1; }
+    body { margin: 0; padding: 2rem; }
+    main { max-width: 1100px; margin: auto; }
+    h1 { margin-bottom: .35rem; }
+    .warning { color: #ffd991; }
+    .meta, #status { padding: .8rem 1rem; border: 1px solid #36514b; border-radius: .6rem; background: #101d1a; }
+    #status[data-state='error'] { color: #ffd1cc; border-color: #93453d; }
+    #status[data-state='complete'] { color: #b9f4d2; border-color: #3d835b; }
+    button { margin: 1rem 0; padding: .7rem 1rem; }
+    button:disabled { opacity: .45; }
+    #previews { display: grid; gap: 1rem; }
+    article { padding: 1rem; border: 1px solid #29423c; border-radius: .7rem; background: #0d1917; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    figure { margin: 0; }
+    figcaption { margin-bottom: .4rem; color: #a8bbb6; }
+    canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; background: #000; }
+    code { overflow-wrap: anywhere; }
+    @media (max-width: 700px) { .pair { grid-template-columns: 1fr; } body { padding: 1rem; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Recorded RGB-D prediction collector</h1>
+    <p class="warning"><strong>Development-only observation tool.</strong> This does not run a benchmark and does not claim evaluation results.</p>
+    <p class="meta" id="runtime">Loading pinned runtime metadata…</p>
+    <p id="status" role="status" aria-live="polite" data-state="loading">Loading corpus…</p>
+    <button id="download" type="button" disabled>Download relative inverse-depth JSON</button>
+    <section id="previews" aria-label="Per-frame RGB and normalized depth previews"></section>
+  </main>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
