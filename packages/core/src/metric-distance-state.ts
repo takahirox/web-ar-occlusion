@@ -12,6 +12,7 @@ export interface MetricDistanceObservation {
 }
 
 export type MetricDistanceStatus =
+  | "starting"
   | "unavailable"
   | "approximate"
   | "refining"
@@ -89,10 +90,11 @@ function median(values: readonly number[]): number {
 function unavailableState(
   sourceId: string,
   unavailableReason: MetricDistanceUnavailableReason | null,
+  status: "starting" | "unavailable" = "unavailable",
 ): Readonly<MetricDistanceState> {
   return Object.freeze({
     sourceId,
-    status: "unavailable",
+    status,
     observations: EMPTY_OBSERVATIONS,
     displayDepthMeters: null,
     medianDepthMeters: null,
@@ -128,9 +130,12 @@ function isValidObservation(
     hasExactObservationFields(observation) &&
     typeof observation.sourceId === "string" &&
     observation.sourceId.length > 0 &&
+    typeof observation.sourceFrameId === "number" &&
     Number.isInteger(observation.sourceFrameId) &&
+    observation.sourceFrameId >= 0 &&
     typeof observation.captureTimestamp === "number" &&
     Number.isFinite(observation.captureTimestamp) &&
+    observation.captureTimestamp >= 0 &&
     typeof observation.depthMeters === "number" &&
     Number.isFinite(observation.depthMeters) &&
     observation.depthMeters > 0 &&
@@ -178,7 +183,7 @@ export function createMetricDistanceState(
   if (typeof sourceId !== "string" || sourceId.length === 0) {
     throw new TypeError("sourceId must be a nonempty string");
   }
-  return unavailableState(sourceId, null);
+  return unavailableState(sourceId, null, "starting");
 }
 
 export function reduceMetricDistanceState(
@@ -256,8 +261,8 @@ export function reduceMetricDistanceState(
       SMOOTHING_ALPHA * (medianDepthMeters - state.displayDepthMeters);
     displayDepthMeters = clamp(
       smoothed,
-      medianDepthMeters - limit,
-      medianDepthMeters + limit,
+      state.displayDepthMeters - limit,
+      state.displayDepthMeters + limit,
     );
   }
 
