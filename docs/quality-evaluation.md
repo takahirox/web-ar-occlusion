@@ -20,6 +20,8 @@ Canonical JSON sorts object keys, preserves array order, normalizes negative zer
 
 Each metric is `known`, `missing`, or `unknown`. Known metrics carry a finite value. Missing metrics identify unavailable or inapplicable evidence. Unknown metrics identify evidence for which a defensible value cannot be concluded, such as an unresolved temporal transition. Missing and unknown values are never replaced with zero.
 
+Frames may carry an optional binary `validityMask`. Pixels marked zero are excluded from per-pixel, boundary, thin-structure, depth, confidence, rendered, safety-leak, and temporal observations. This lets recorded sensors retain unknown pixels instead of relabelling them as background. Inputs without this field retain the original all-valid behavior.
+
 ## Measurements
 
 Metric depth reports metre MAE and RMSE only when `depthScale` is `metric`. Relative depth reports median-scale-aligned absolute relative error and scale-invariant log RMSE. Null depth samples are excluded and counted honestly.
@@ -50,6 +52,67 @@ Visual review manifests contain at most 50 digest-addressed image or video refer
 
 `createAiQualitySummary` creates a bounded machine-readable projection of baseline/candidate deltas, safety violations, missing evidence, worst-scenario references, and visual-review manifest digests. It binds the deterministic decision digest, fixes `promotionAllowed` to false, and cannot replace the policy gate.
 
+## Phase 1 recorded TUM RGB-D preparation
+
+`quality:prepare-rgbd` consumes an already-downloaded TUM RGB-D directory containing `rgb.txt`, `depth.txt`, RGB PNG/JPEG files, and the original non-interlaced 16-bit grayscale depth PNG files. It performs no network access and never treats preview AVI/YUV files, RGB encodings, or colorized depth visualizations as numerical depth.
+
+The maximum association delta is mandatory. Candidate RGB/depth edges within that delta are sorted by absolute timestamp difference, then RGB timestamp/path, then depth timestamp/path. The first edge whose RGB and depth entries are both unused is retained. Retained pairs are sorted by RGB time. If more pairs exist than requested, selection uses `round(i*(N-1)/(count-1))`; a one-frame request selects `floor((N-1)/2)`. Requests are bounded to 1–10 frames.
+
+Preparation without predictions creates the selected, digest-bound local corpus bundle and `corpus.json`, but no `quality-input.json` and no scores:
+
+```sh
+npm run quality:prepare-rgbd -- \
+  --dataset /absolute/path/to/rgbd_dataset_freiburg1_xyz \
+  --output artifacts/tum-freiburg1-preview \
+  --max-delta-ms 20 \
+  --frames 10 \
+  --occlusion-quantile 0.5
+```
+
+Prediction input is explicit relative inverse depth (larger values are nearer), with `null` preserving an unknown prediction:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "web-ar-occlusion-relative-inverse-depth",
+  "evaluatedAt": "2026-09-02T00:00:00.000Z",
+  "implementationId": "candidate-name",
+  "frames": [
+    {
+      "id": "frame-0000",
+      "width": 640,
+      "height": 480,
+      "inverseDepth": [1.0, null]
+    }
+  ]
+}
+```
+
+The example array is abbreviated; every selected frame and every pixel are required. The implementation digest is computed over the canonical complete predictions document rather than trusted from a caller-provided label. Re-run into a new, non-existing repository-relative output directory to add evaluation material:
+
+```sh
+npm run quality:prepare-rgbd -- \
+  --dataset /absolute/path/to/rgbd_dataset_freiburg1_xyz \
+  --output artifacts/tum-freiburg1-candidate-a \
+  --max-delta-ms 20 \
+  --frames 10 \
+  --occlusion-quantile 0.5 \
+  --predictions /absolute/path/to/candidate-a.json
+
+npm run quality:evaluate -- artifacts/tum-freiburg1-candidate-a/quality-input.json \
+  > artifacts/tum-freiburg1-candidate-a/quality-artifact.json
+```
+
+For each frame, only pixels with both nonzero TUM depth and non-null predicted inverse depth are valid. Let `k=ceil(q*n)` over that joint support. The reference occlusion plane is the kth-smallest TUM metric depth and reference foreground is `depth <= plane`. The predicted plane is the kth-largest relative inverse depth and predicted foreground is `inverseDepth >= plane`. Threshold ties are included. This is a deterministic rank/quantile comparison rule, not metric calibration. The input therefore declares `depthScale: "relative"`: scale-aligned relative-depth metrics may be known, while metre MAE/RMSE remain explicitly missing. TUM raw zero remains null/invalid.
+
+Each predicted bundle contains repository-relative, SHA-256-bound review items for the original RGB PNG/JPEG, reference inverse-depth visualization, predicted mask, reference mask, and diff. Generated visualizations use binary Netpbm PGM (`P5`); diff value 64 means invalid/unknown, 255 means disagreement, and 0 means agreement. The CLI rejects parent traversal, absolute association paths, source or output symlinks, unsupported depth PNG modes, mismatched dimensions, existing output directories, excessive files/dimensions/pixels, and excessive total output.
+
+### TUM attribution and evidence limits
+
+TUM RGB-D data is licensed under CC BY 4.0. Anyone preparing, copying, publishing, or sharing a bundle must retain the dataset source, credit the TUM RGB-D Dataset authors, link the [dataset site](https://cvg.cit.tum.de/data/datasets/rgbd-dataset) and [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/), cite Jürgen Sturm et al., “A Benchmark for the Evaluation of RGB-D SLAM Systems,” IROS 2012, and indicate any changes or selected subsets. The generated corpus metadata records the license and selection provenance but does not discharge those attribution obligations.
+
+These artifacts are development-only recorded-RGBD evidence with `claims.benchmark=false`. They do not claim browser, model, live-camera, device, latency, thermal, or production performance. In particular, they are not `reference-device` evidence and cannot satisfy or bypass the separate device-promotion policy.
+
 ## Direct Node CLI
 
 Run the tools without an install or build step:
@@ -67,7 +130,7 @@ node packages/core/src/quality-cli.ts ai-summary decision.json baseline.json can
 node packages/core/src/quality-cli.ts review-manifest artifact.json 24
 ```
 
-Equivalent package entry points include `npm run quality:evaluate --`, `quality:safety`, `quality:compare`, `quality:gate`, `quality:summary`, `quality:review`, and `quality:test`. External downloads, models, cameras, and device runs are outside these commands and require separate explicit approval.
+Equivalent package entry points include `npm run quality:prepare-rgbd --`, `quality:evaluate`, `quality:safety`, `quality:compare`, `quality:gate`, `quality:summary`, `quality:review`, and `quality:test`. External downloads, models, cameras, and device runs are outside these commands and require separate explicit approval.
 
 Commands write one canonical JSON value to standard output. Invalid inputs, failed verification, provenance-incomparable comparisons, unsafe review references, and invalid bounds exit nonzero. No command performs network access.
 

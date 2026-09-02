@@ -11,10 +11,11 @@ Implemented foundations include:
 - I-04 foundation: package-private latest-wins inference scheduling and deterministic lifecycle control with generation fencing;
 - I-05 foundation: the package-private three-state calibration/evidence gate, including zero-confidence fallbacks and resource-release notifications;
 - a deterministic quality evaluator with digest-bound corpus/run provenance, fail-closed comparison, and review-only experiment summaries;
+- a dependency-free, development-only TUM recorded-RGBD corpus/evaluation-input preparer with deterministic timestamp association and explicit rank/quantile masks;
 - `@web-ar-occlusion/depth-webgpu`, including a pinned real relative-depth provider; and
 - a raw-WebGPU camera diagnostic that exercises that real provider outside the unfinished production engine.
 
-The deterministic tests cover contracts, telemetry, scheduling and ownership, lifecycle races, calibration state paths, provider capture and normalization, and the demo server/UI. Run `npm test`, `npm run demo:test`, and `npm run quality:test` for these suites.
+The deterministic tests cover contracts, telemetry, scheduling and ownership, lifecycle races, calibration state paths, recorded-RGBD preparation, provider capture and normalization, and the demo server/UI. Run `npm test`, `npm run demo:test`, and `npm run quality:test` for these suites.
 
 The contracts, architecture, defaults, control rules, validation protocol, and acceptance hypotheses required by GitHub Issue #1 remain documented here:
 
@@ -26,6 +27,8 @@ The contracts, architecture, defaults, control rules, validation protocol, and a
 - [Deterministic quality evaluation](docs/quality-evaluation.md)
 
 The quality evaluator and its fixtures are deterministic synthetic development evidence. They are separate from the live-camera demo and are not camera-model accuracy, device-performance, or benchmark evidence.
+
+The recorded-RGBD preparer requires an already-downloaded TUM dataset and performs no downloads. Its outputs remain development-only, set no benchmark claim, and cannot substitute for reference-device promotion evidence. Exact commands, prediction format, quantile rule, bounds, and TUM CC BY 4.0 attribution obligations are in [Deterministic quality evaluation](docs/quality-evaluation.md#phase-1-recorded-tum-rgb-d-preparation).
 
 Remaining production work includes deterministic WebGPU fixtures and fake-provider integration, canonical metric calibration, full core/keyframe integration, reprojection and disocclusion, stabilization/refinement/compositing, adaptive integration, renderer adapters, and reference-device validation. Optical flow and segmentation remain off by default and may be adopted only through the validation evidence gates. Every numeric target in the specification remains an unvalidated hypothesis until the required reference-device evidence exists.
 
