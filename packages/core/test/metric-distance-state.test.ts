@@ -129,7 +129,8 @@ test("alternating 1.8m and 2.2m samples remain noisy and never stable", () => {
 
   assert.equal(state.stability, 0);
   assert.equal(state.guidance, "hold-steady-when-noisy");
-  assert.equal(state.displayDepthMeters, null);
+  assert.notEqual(state.displayDepthMeters, null);
+  assert.ok(Math.abs(state.displayDepthMeters! - 2) <= 0.05);
   assert.notEqual(state.lastPresentedDepthMeters, null);
 });
 
@@ -146,7 +147,7 @@ test("no horizontal travel caps repeatability at one half", () => {
   assert.equal(state.temporalRepeatability, 0.5);
   assert.equal(state.guidance, "move-slowly-side-to-side");
   assert.notEqual(state.status, "stable");
-  assert.equal(state.displayDepthMeters, null);
+  assert.equal(state.displayDepthMeters, 2);
   assert.equal(state.lastPresentedDepthMeters, 2);
 });
 
@@ -256,7 +257,7 @@ test("the next valid exact-source sample restarts as approximate", () => {
   assert.equal(state.displayDepthMeters, 2);
 });
 
-test("recovery after withheld output remains bounded", () => {
+test("updates noisy approximate output within the smoothing bound", () => {
   let state = createMetricDistanceState(SOURCE_ID);
 
   for (let frame = 1; frame <= 8; frame += 1) {
@@ -268,8 +269,8 @@ test("recovery after withheld output remains bounded", () => {
     );
   }
 
-  assert.equal(state.displayDepthMeters, null);
-  const previousDisplay = state.lastPresentedDepthMeters;
+  assert.notEqual(state.displayDepthMeters, null);
+  const previousDisplay = state.displayDepthMeters;
   let recoveredDisplay = null;
   let recoveredMedian = null;
 

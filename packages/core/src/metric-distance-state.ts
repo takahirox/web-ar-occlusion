@@ -263,12 +263,6 @@ export function reduceMetricDistanceState(
   let lastPresentedDepthMeters = medianDepthMeters;
   if (
     observations.length === WINDOW_SIZE &&
-    temporalRepeatability < STABILITY_THRESHOLD
-  ) {
-    displayDepthMeters = null;
-    lastPresentedDepthMeters = state.lastPresentedDepthMeters;
-  } else if (
-    observations.length === WINDOW_SIZE &&
     state.lastPresentedDepthMeters !== null
   ) {
     const limit = Math.max(0.05, 0.05 * medianDepthMeters);
