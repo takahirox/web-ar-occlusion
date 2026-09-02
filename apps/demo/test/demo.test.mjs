@@ -20,6 +20,7 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const providerSource = resolve(root, '../../packages/depth-webgpu/src/index.ts');
 const metricDistanceStateSource = resolve(root, '../../packages/core/src/metric-distance-state.ts');
+const metricScaleShiftRefinerSource = resolve(root, '../../packages/core/src/metric-scale-shift-refiner.ts');
 
 function fetchLocal(port, path, method = 'GET') {
   return new Promise((resolveResponse, reject) => {
@@ -52,7 +53,7 @@ async function withServer(run) {
 
 test('serves demo assets with correct MIME and no-store headers', async () => {
   await withServer(async (port) => {
-    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript'], ['/metric-calibration.js', 'text/javascript'], ['/metric-distance-state.js', 'text/javascript']]) {
+    for (const [path, mime] of [['/', 'text/html'], ['/style.css', 'text/css'], ['/main.js', 'text/javascript'], ['/occlusion.js', 'text/javascript'], ['/depth-webgpu.js', 'text/javascript'], ['/metric-calibration.js', 'text/javascript'], ['/metric-distance-state.js', 'text/javascript'], ['/metric-scale-shift-refiner.js', 'text/javascript']]) {
       const response = await fetchLocal(port, path);
       assert.equal(response.status, 200);
       assert.match(response.headers['content-type'], new RegExp(`^${mime}`));
@@ -107,6 +108,21 @@ test('serves only the exact metric distance state route through the standard Typ
     for (const path of ['/packages/core/src/metric-distance-state.ts', '/metric-distance-state.js/metric-distance-state.ts']) {
       assert.equal((await fetchLocal(port, path)).status, 404);
     }
+  });
+});
+
+test('serves the passive metric scale-shift refiner through the TypeScript stripper', async () => {
+  const source = await readFile(metricScaleShiftRefinerSource, 'utf8');
+  const expected = stripTypeScriptTypes(source, {
+    mode: 'strip',
+    sourceUrl: pathToFileURL(metricScaleShiftRefinerSource).href
+  });
+  await withServer(async (port) => {
+    const transformed = await fetchLocal(port, '/metric-scale-shift-refiner.js');
+    assert.equal(transformed.status, 200);
+    assert.equal(transformed.body, expected);
+    assert.match(transformed.body, /export function refineMetricScaleShift/);
+    assert.doesNotMatch(transformed.body, /export (?:type|interface)\b/);
   });
 });
 
@@ -187,6 +203,16 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /from '\.\/occlusion\.js'/);
   assert.match(script, /from '\/metric-calibration\.js'/);
   assert.match(script, /from '\/metric-distance-state\.js'/);
+  assert.match(script, /from '\/metric-scale-shift-refiner\.js'/);
+  assert.match(script, /createMetricScaleShiftRefinerState\(\)/);
+  assert.match(script, /refineMetricScaleShift\(state\.metricRefinerState/);
+  assert.match(script, /sourceId: state\.sourceId/);
+  assert.match(script, /linearZ: nativeMetric\.linearZMeters/);
+  assert.match(script, /validity: nativeMetric\.validity/);
+  assert.match(script, /refinement\.output\.linearZ/);
+  assert.match(script, /refinement\.output\.validity/);
+  assert.match(script, /normalized residual/);
+  assert.match(script, /resetMetricScaleShiftRefinerState\(\)/);
   assert.match(script, /metricState: createMetricDistanceState\(state\.sourceId\)/);
   assert.match(script, /probe\.metricState = reduceMetricDistanceState/);
   assert.match(script, /sourceId: state\.sourceId/);
@@ -238,8 +264,8 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /nativeMetric\.validity\[index\] === 1/);
   assert.match(script, /Number\.isFinite\(nativeMetric\.linearZMeters\[index\]\)/);
   assert.match(script, /nativeMetric\.linearZMeters\[index\] > 0/);
-  assert.match(script, /nativeMetric\.linearZMeters,/);
-  assert.match(script, /nativeMetric\.validity,/);
+  assert.match(script, /linearZ: nativeMetric\.linearZMeters/);
+  assert.match(script, /validity: nativeMetric\.validity/);
   assert.match(script, /clearMetricMask\(error\?\.message \|\| 'native-metric-rejected', 'provider-failure'\)/);
   assert.match(script, /function metricResultAvailable\(\)/);
   assert.match(script, /rawInverseDepth: result\.rawInverseDepth/);

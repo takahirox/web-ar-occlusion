@@ -14,6 +14,11 @@ import {
   reduceMetricDistanceState
 } from '/metric-distance-state.js';
 import {
+  createMetricScaleShiftRefinerState,
+  refineMetricScaleShift,
+  resetMetricScaleShiftRefinerState
+} from '/metric-scale-shift-refiner.js';
+import {
   DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
   DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
   sampleMetricDepthProbe,
@@ -47,6 +52,7 @@ const state = {
   calibrationReason: 'relative-only', metricTexture: null, metricMask: null,
   metricLinearZ: null, metricValidity: null, metricSourceFrameId: null, metricCaptureTimestamp: null,
   metricProvenance: null,
+  metricRefinerState: createMetricScaleShiftRefinerState(), metricRefinement: null,
   probesEnabled: false, probes: [], probeSequence: 0,
   cleanup: Promise.resolve()
 };
@@ -243,6 +249,8 @@ function clearMetricMask(reason, invalidationType = 'calibration-lost') {
   state.metricSourceFrameId = null;
   state.metricCaptureTimestamp = null;
   state.metricProvenance = null;
+  state.metricRefinerState = resetMetricScaleShiftRefinerState();
+  state.metricRefinement = null;
   invalidateProbeMetricStates(invalidationType);
   if (state.mode === 'metric' && state.placeholderDepth) setDepthInput(state.placeholderDepth);
   if (reason) state.depthReason = reason;
@@ -338,10 +346,21 @@ function updateMetricResult(result) {
     state.pendingAnchorDistance = null;
     try {
       const nativeMetric = validatedNativeMetric(result);
+      const refinement = refineMetricScaleShift(state.metricRefinerState, {
+        sourceId: state.sourceId,
+        sourceFrameId: result.sourceFrameId,
+        captureTimestamp: result.captureTimestamp,
+        width: result.width,
+        height: result.height,
+        linearZ: nativeMetric.linearZMeters,
+        validity: nativeMetric.validity
+      });
+      state.metricRefinerState = refinement.state;
+      state.metricRefinement = refinement.output.diagnostics;
       applyMetricBuffers(
         result,
-        nativeMetric.linearZMeters,
-        nativeMetric.validity,
+        refinement.output.linearZ,
+        refinement.output.validity,
         'native-metric'
       );
       state.calibrationReason = 'native-metric-active';
@@ -352,6 +371,8 @@ function updateMetricResult(result) {
   }
 
   const frame = metricEvidence(result);
+  state.metricRefinerState = resetMetricScaleShiftRefinerState();
+  state.metricRefinement = null;
   if (state.pendingAnchorDistance !== null) {
     const distanceMeters = state.pendingAnchorDistance;
     state.pendingAnchorDistance = null;
@@ -435,7 +456,14 @@ function refreshDepthValidity(now = performance.now()) {
 
 function metricRuntimeSummary() {
   if (!metricResultAvailable()) return 'Metric depth: unavailable · awaiting valid source-associated evidence';
-  if (state.probes.length === 0) return 'Metric depth: starting · add a tracked object';
+  if (state.metricRefinement) {
+    const refinement = state.metricRefinement;
+    const residual = refinement.normalizedResidual === null
+      ? 'residual pending'
+      : `normalized residual ${(refinement.normalizedResidual * 100).toFixed(1)}%`;
+    return `Metric depth: ${refinement.stage} · scale ${refinement.scale.toFixed(3)} · shift ${refinement.shiftMeters.toFixed(3)} m · support ${refinement.inlierCount}/${refinement.supportCount} · ${residual} · ${refinement.guidance}`;
+  }
+  if (state.probes.length === 0) return 'Metric depth: manual fallback · add a tracked object';
   const metricStates = state.probes.map((probe) => probe.metricState);
   let status = 'unavailable';
   if (metricStates.every((item) => item.status === 'stable')) status = 'stable';
