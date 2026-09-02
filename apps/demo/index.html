@@ -23,6 +23,7 @@
       <div class="stage flip-x" id="stage">
         <video id="camera" autoplay muted playsinline></video>
         <canvas id="gpu" aria-label="Transparent WebGPU virtual content overlay"></canvas>
+        <div class="probe-overlay" id="probeOverlay" aria-live="polite" aria-label="Approximate metric depth probes"></div>
         <div class="start-screen" id="startScreen">
           <div class="capability-icon" aria-hidden="true">◉</div>
           <h2>Camera stays off until you start it</h2>
@@ -75,6 +76,14 @@
             <button type="button" data-flip="false" aria-pressed="false">Raw</button>
           </div>
         </fieldset>
+        <fieldset>
+          <legend>Metric distance debug</legend>
+          <div class="segmented" id="probeControls">
+            <button type="button" data-probes="off" aria-pressed="true">Off</button>
+            <button type="button" data-probes="on" aria-pressed="false" disabled>Click probes</button>
+          </div>
+          <button class="secondary compact" id="clearProbes" type="button" disabled>Clear probes</button>
+        </fieldset>
         <button class="secondary" id="stop" type="button" disabled>Stop camera</button>
       </div>
     </section>
@@ -95,6 +104,7 @@
         <div><dt>Depth valid</dt><dd id="depthValid">false</dd></div>
         <div><dt>Depth semantics</dt><dd id="depthMode">relative diagnostic</dd></div>
         <div><dt>Calibration state</dt><dd id="calibrationStatus">relative-only · 0 anchors</dd></div>
+        <div><dt>Distance probes</dt><dd id="probeStatus">off · metric calibration required</dd></div>
         <div><dt>Crossing</dt><dd>realZ &lt; virtualZ</dd></div>
         <div><dt>Camera</dt><dd id="cameraSize">off</dd></div>
         <div><dt>View mode</dt><dd id="viewMode">occlusion</dd></div>

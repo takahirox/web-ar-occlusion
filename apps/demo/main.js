@@ -7,6 +7,7 @@ import {
 import {
   DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
   DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
+  sampleMetricDepthProbe,
   updateMetricCrossingMask
 } from './occlusion.js';
 
@@ -19,7 +20,8 @@ const profiles = Object.freeze({
 const elements = Object.fromEntries([
   'camera', 'gpu', 'stage', 'startScreen', 'start', 'stop', 'status', 'viewControls', 'orientationControls',
   'modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis',
-  'exitHysteresis', 'depthMode', 'calibrationStatus', 'profileControls', 'profiles', 'fps', 'inference',
+  'exitHysteresis', 'probeOverlay', 'probeControls', 'clearProbes', 'probeStatus', 'depthMode',
+  'calibrationStatus', 'profileControls', 'profiles', 'fps', 'inference',
   'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle', 'provider', 'backend', 'model'
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -33,9 +35,14 @@ const state = {
   profileGeneration: 0, fpsFrames: 0, fps: 0, lastFpsSample: performance.now(),
   anchors: [], anchorSequence: 0, pendingAnchorDistance: null, calibrationModel: null,
   calibrationReason: 'relative-only', metricTexture: null, metricMask: null,
-  metricSourceFrameId: null, metricCaptureTimestamp: null,
+  metricLinearZ: null, metricValidity: null, metricSourceFrameId: null, metricCaptureTimestamp: null,
+  probesEnabled: false, probes: [], probeSequence: 0,
   cleanup: Promise.resolve()
 };
+
+const MAX_DISTANCE_PROBES = 6;
+const PROBE_HISTORY_LENGTH = 8;
+const PROBE_ROI_RADIUS = 2;
 
 function setLifecycle(value, message = value, error = false) {
   state.lifecycle = value;
@@ -75,14 +82,207 @@ function setDepthInput(texture) {
   });
 }
 
-function clearMetricMask(reason) { state.metricTexture?.destroy(); state.metricTexture = null; state.metricMask = null; state.metricSourceFrameId = null; state.metricCaptureTimestamp = null; if (state.mode === 'metric' && state.placeholderDepth) setDepthInput(state.placeholderDepth); if (reason) state.depthReason = reason; }
-function clearMetricCalibration(reason = 'cleared') { clearMetricMask(reason); state.anchors = []; state.pendingAnchorDistance = null; state.calibrationModel = null; state.calibrationReason = reason; }
-function supersedeDepth() { state.depthFrame?.depth.destroy(); state.depthFrame = null; state.metricTexture?.destroy(); state.metricTexture = null; state.metricSourceFrameId = null; state.metricCaptureTimestamp = null; }
-function updateCalibrationControls() { const calibrated = state.calibrationModel !== null; const metricButton = elements.modeControls.querySelector('button[data-mode="metric"]'); metricButton.disabled = !calibrated; metricButton.title = calibrated ? '' : 'Capture at least two distinct known distances first.'; elements.captureAnchor.disabled = state.lifecycle !== 'running' || state.provider?.state !== 'ready' || state.pendingAnchorDistance !== null; elements.depthMode.textContent = state.mode === 'metric' ? 'metric · linear-z · meter' : 'relative diagnostic'; elements.calibrationStatus.textContent = calibrated ? `calibrated · ${state.anchors.length} anchors · RMSE ${state.calibrationModel.inverseDepthRmse.toFixed(4)} 1/m` : `${state.calibrationReason} · ${state.anchors.length} anchors`; }
+function probeMedian(values) {
+  const ordered = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 === 1 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+}
+
+function renderDistanceProbes() {
+  const calibrated = state.calibrationModel !== null;
+  const onButton = elements.probeControls.querySelector('button[data-probes="on"]');
+  onButton.disabled = !calibrated;
+  onButton.title = calibrated ? 'Click the camera image to add a distance probe.' : 'Metric calibration is required before meters can be displayed.';
+  elements.clearProbes.disabled = state.probes.length === 0;
+  elements.stage.classList.toggle('probes-enabled', state.probesEnabled && calibrated);
+  elements.probeStatus.textContent = state.probesEnabled
+    ? `${state.probes.length} probe${state.probes.length === 1 ? '' : 's'} · ${calibrated ? 'click image to add' : 'metric unavailable'}`
+    : `off · ${calibrated ? 'metric ready' : 'metric calibration required'}`;
+  elements.probeOverlay.replaceChildren();
+  if (!state.probesEnabled) return;
+
+  for (const probe of state.probes) {
+    const label = document.createElement('div');
+    label.className = `probe-label${probe.measurement ? '' : ' invalid'}`;
+    label.style.left = `${probe.x * 100}%`;
+    label.style.top = `${probe.y * 100}%`;
+    const value = document.createElement('strong');
+    const detail = document.createElement('small');
+    if (probe.measurement) {
+      value.textContent = `P${probe.id} ≈ ${probe.measurement.median.toFixed(2)} m`;
+      detail.textContent = `now ${probe.measurement.current.toFixed(2)} · range ${probe.measurement.range.toFixed(2)} m`;
+    } else {
+      value.textContent = `P${probe.id} —`;
+      detail.textContent = calibrated ? 'no valid current metric ROI' : 'metric calibration unavailable';
+    }
+    label.append(value, detail);
+    elements.probeOverlay.append(label);
+  }
+}
+
+function invalidateProbeMeasurements(clearHistory = false) {
+  for (const probe of state.probes) {
+    probe.measurement = null;
+    if (clearHistory) probe.history = [];
+  }
+  renderDistanceProbes();
+}
+
+function updateDistanceProbeMeasurement(probe, linearZ, validity, width, height) {
+  const depthX = state.previewFlipped ? 1 - probe.x : probe.x;
+  const sample = sampleMetricDepthProbe(linearZ, validity, width, height, depthX, probe.y, PROBE_ROI_RADIUS);
+  if (!sample.valid) {
+    probe.measurement = null;
+    probe.history = [];
+    return;
+  }
+  probe.history.push(sample.depthMeters);
+  if (probe.history.length > PROBE_HISTORY_LENGTH) probe.history.shift();
+  probe.measurement = {
+    current: sample.depthMeters,
+    median: probeMedian(probe.history),
+    range: Math.max(...probe.history) - Math.min(...probe.history)
+  };
+}
+
+function updateDistanceProbeMeasurements(linearZ, validity, width, height) {
+  for (const probe of state.probes) updateDistanceProbeMeasurement(probe, linearZ, validity, width, height);
+  renderDistanceProbes();
+}
+
+function addDistanceProbe(x, y) {
+  if (state.probes.length >= MAX_DISTANCE_PROBES) state.probes.shift();
+  const probe = { id: ++state.probeSequence, x, y, history: [], measurement: null };
+  state.probes.push(probe);
+  if (state.metricLinearZ && state.metricValidity && state.depthFrame) {
+    updateDistanceProbeMeasurement(probe, state.metricLinearZ, state.metricValidity, state.depthFrame.width, state.depthFrame.height);
+  }
+  renderDistanceProbes();
+}
+
+function setDistanceProbesEnabled(enabled) {
+  state.probesEnabled = enabled && state.calibrationModel !== null;
+  selectButton(elements.probeControls, 'probes', state.probesEnabled ? 'on' : 'off');
+  if (state.probesEnabled && state.probes.length === 0) addDistanceProbe(0.5, 0.5);
+  else renderDistanceProbes();
+}
+
+function clearMetricMask(reason) {
+  state.metricTexture?.destroy();
+  state.metricTexture = null;
+  state.metricMask = null;
+  state.metricLinearZ = null;
+  state.metricValidity = null;
+  state.metricSourceFrameId = null;
+  state.metricCaptureTimestamp = null;
+  invalidateProbeMeasurements(false);
+  if (state.mode === 'metric' && state.placeholderDepth) setDepthInput(state.placeholderDepth);
+  if (reason) state.depthReason = reason;
+}
+
+function clearMetricCalibration(reason = 'cleared') {
+  clearMetricMask(reason);
+  state.anchors = [];
+  state.pendingAnchorDistance = null;
+  state.calibrationModel = null;
+  state.calibrationReason = reason;
+  invalidateProbeMeasurements(true);
+}
+
+function supersedeDepth() {
+  state.depthFrame?.depth.destroy();
+  state.depthFrame = null;
+  state.metricTexture?.destroy();
+  state.metricTexture = null;
+  state.metricLinearZ = null;
+  state.metricValidity = null;
+  state.metricSourceFrameId = null;
+  state.metricCaptureTimestamp = null;
+  invalidateProbeMeasurements(false);
+}
+
+function updateCalibrationControls() {
+  const calibrated = state.calibrationModel !== null;
+  const metricButton = elements.modeControls.querySelector('button[data-mode="metric"]');
+  metricButton.disabled = !calibrated;
+  metricButton.title = calibrated ? '' : 'Capture at least two distinct known distances first.';
+  elements.captureAnchor.disabled = state.lifecycle !== 'running' || state.provider?.state !== 'ready' || state.pendingAnchorDistance !== null;
+  elements.depthMode.textContent = state.mode === 'metric' ? 'metric · linear-z · meter' : 'relative diagnostic';
+  elements.calibrationStatus.textContent = calibrated ? `calibrated · ${state.anchors.length} anchors · RMSE ${state.calibrationModel.inverseDepthRmse.toFixed(4)} 1/m` : `${state.calibrationReason} · ${state.anchors.length} anchors`;
+  renderDistanceProbes();
+}
 function metricEvidence(result) { return { sourceId: state.sourceId, sourceFrameId: result.sourceFrameId, captureTimestamp: result.captureTimestamp, rawInverseDepth: result.rawInverseDepth, width: result.width, height: result.height }; }
 function numericControl(element, minimum, maximum, label) { const value = Number(element.value); if (!Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`${label} is outside its allowed range.`); return value; }
 function uploadMetricMask(mask, width, height) { const bytesPerRow = Math.ceil(width / 256) * 256; const padded = new Uint8Array(bytesPerRow * height); for (let row = 0; row < height; row += 1) padded.set(mask.subarray(row * width, (row + 1) * width), row * bytesPerRow); const texture = state.device.createTexture({ label: 'metric-crossing-mask', size: { width, height, depthOrArrayLayers: 1 }, format: 'r8unorm', usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING }); try { state.device.queue.writeTexture({ texture }, padded, { bytesPerRow, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 }); return texture; } catch (error) { texture.destroy(); throw error; } }
-function updateMetricResult(result) { const frame = metricEvidence(result); if (state.pendingAnchorDistance !== null) { const distanceMeters = state.pendingAnchorDistance; state.pendingAnchorDistance = null; try { const anchor = captureKnownPlaneAnchor({ id: `anchor-${++state.anchorSequence}`, frame, expectedSourceFrameId: result.sourceFrameId, expectedCaptureTimestamp: result.captureTimestamp, x: Math.floor(result.width / 2), y: Math.floor(result.height / 2), radius: 2, distanceMeters }); state.anchors.push(anchor); const distinctDistances = new Set(state.anchors.map((item) => item.distanceMeters)).size; const distinctRaw = new Set(state.anchors.map((item) => item.rawInverseDepth)).size; if (distinctDistances < 2 || distinctRaw < 2) { state.calibrationModel = null; state.calibrationReason = 'distinct-distance-and-raw-anchors-required'; } else { const fit = fitKnownPlaneCalibration(state.anchors, { nowTimestamp: result.captureTimestamp }); state.calibrationModel = fit.valid ? fit.model : null; state.calibrationReason = fit.valid ? 'calibrated' : fit.reason; } } catch (error) { state.calibrationModel = null; state.calibrationReason = error?.message || 'anchor-rejected'; } return; } if (!state.calibrationModel) return; const application = applyKnownPlaneCalibration(frame, state.calibrationModel, performance.now()); if (!application.usable) { clearMetricCalibration(application.reason); return; } if (application.sourceId !== state.sourceId || application.sourceFrameId !== result.sourceFrameId || application.captureTimestamp !== result.captureTimestamp || application.representation !== 'linear-z' || application.scale !== 'metric' || application.unit !== 'meter') { clearMetricCalibration('metric-source-association-mismatch'); return; } try { const mask = updateMetricCrossingMask(state.metricMask, application.linearZ, application.validity, numericControl(elements.virtualZ, 0.1, 20, 'Virtual Z'), numericControl(elements.entryHysteresis, 0, 1, 'Entry hysteresis'), numericControl(elements.exitHysteresis, 0, 1, 'Exit hysteresis')); const texture = uploadMetricMask(mask, result.width, result.height); state.metricTexture?.destroy(); state.metricTexture = texture; state.metricMask = mask; state.metricSourceFrameId = result.sourceFrameId; state.metricCaptureTimestamp = result.captureTimestamp; } catch (error) { clearMetricMask(error?.message || 'metric-mask-rejected'); } }
+function updateMetricResult(result) {
+  const frame = metricEvidence(result);
+  if (state.pendingAnchorDistance !== null) {
+    const distanceMeters = state.pendingAnchorDistance;
+    state.pendingAnchorDistance = null;
+    try {
+      const anchor = captureKnownPlaneAnchor({
+        id: `anchor-${++state.anchorSequence}`,
+        frame,
+        expectedSourceFrameId: result.sourceFrameId,
+        expectedCaptureTimestamp: result.captureTimestamp,
+        x: Math.floor(result.width / 2),
+        y: Math.floor(result.height / 2),
+        radius: 2,
+        distanceMeters
+      });
+      state.anchors.push(anchor);
+      const distinctDistances = new Set(state.anchors.map((item) => item.distanceMeters)).size;
+      const distinctRaw = new Set(state.anchors.map((item) => item.rawInverseDepth)).size;
+      if (distinctDistances < 2 || distinctRaw < 2) {
+        state.calibrationModel = null;
+        state.calibrationReason = 'distinct-distance-and-raw-anchors-required';
+      } else {
+        const fit = fitKnownPlaneCalibration(state.anchors, { nowTimestamp: result.captureTimestamp });
+        state.calibrationModel = fit.valid ? fit.model : null;
+        state.calibrationReason = fit.valid ? 'calibrated' : fit.reason;
+      }
+    } catch (error) {
+      state.calibrationModel = null;
+      state.calibrationReason = error?.message || 'anchor-rejected';
+    }
+    return;
+  }
+  if (!state.calibrationModel) return;
+  const application = applyKnownPlaneCalibration(frame, state.calibrationModel, performance.now());
+  if (!application.usable) {
+    clearMetricCalibration(application.reason);
+    return;
+  }
+  if (application.sourceId !== state.sourceId || application.sourceFrameId !== result.sourceFrameId ||
+      application.captureTimestamp !== result.captureTimestamp || application.representation !== 'linear-z' ||
+      application.scale !== 'metric' || application.unit !== 'meter') {
+    clearMetricCalibration('metric-source-association-mismatch');
+    return;
+  }
+  try {
+    const mask = updateMetricCrossingMask(
+      state.metricMask,
+      application.linearZ,
+      application.validity,
+      numericControl(elements.virtualZ, 0.1, 20, 'Virtual Z'),
+      numericControl(elements.entryHysteresis, 0, 1, 'Entry hysteresis'),
+      numericControl(elements.exitHysteresis, 0, 1, 'Exit hysteresis')
+    );
+    const texture = uploadMetricMask(mask, result.width, result.height);
+    state.metricTexture?.destroy();
+    Object.assign(state, {
+      metricTexture: texture,
+      metricMask: mask,
+      metricLinearZ: application.linearZ,
+      metricValidity: application.validity,
+      metricSourceFrameId: result.sourceFrameId,
+      metricCaptureTimestamp: result.captureTimestamp
+    });
+    updateDistanceProbeMeasurements(application.linearZ, application.validity, result.width, result.height);
+  } catch (error) {
+    clearMetricMask(error?.message || 'metric-mask-rejected');
+  }
+}
 
 function invalidateDepth(reason, destroy = true) {
   state.depthValid = false;
@@ -478,6 +678,22 @@ elements.modeControls.addEventListener('click', ({ target }) => { const button =
 elements.captureAnchor.addEventListener('click', () => { try { state.pendingAnchorDistance = numericControl(elements.anchorDistance, 0.1, 20, 'Known distance'); state.calibrationReason = 'awaiting exact accepted source frame'; clearMetricMask('awaiting calibration anchor'); } catch (error) { state.calibrationReason = error?.message || 'invalid known distance'; } updateTelemetry(); });
 elements.clearCalibration.addEventListener('click', () => { clearMetricCalibration('cleared'); updateTelemetry(); });
 for (const control of [elements.virtualZ, elements.entryHysteresis, elements.exitHysteresis]) control.addEventListener('input', () => { clearMetricMask('metric controls changed'); updateTelemetry(); });
+elements.probeControls.addEventListener('click', ({ target }) => {
+  const button = target.closest('button[data-probes]');
+  if (!button || button.disabled) return;
+  setDistanceProbesEnabled(button.dataset.probes === 'on');
+});
+elements.clearProbes.addEventListener('click', () => {
+  state.probes = [];
+  renderDistanceProbes();
+});
+elements.stage.addEventListener('click', (event) => {
+  if (!state.probesEnabled || !state.calibrationModel || state.lifecycle !== 'running' || !elements.startScreen.classList.contains('hidden')) return;
+  const bounds = elements.stage.getBoundingClientRect();
+  const x = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+  const y = Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height));
+  addDistanceProbe(x, y);
+});
 
 elements.viewControls.addEventListener('click', ({ target }) => {
   const button = target.closest('button[data-view]');
@@ -496,6 +712,12 @@ elements.orientationControls.addEventListener('click', ({ target }) => {
   state.previewFlipped = button.dataset.flip === 'true';
   elements.stage.classList.toggle('flip-x', state.previewFlipped);
   selectButton(elements.orientationControls, 'flip', String(state.previewFlipped));
+  for (const probe of state.probes) probe.history = [];
+  if (state.metricLinearZ && state.metricValidity && state.depthFrame) {
+    updateDistanceProbeMeasurements(state.metricLinearZ, state.metricValidity, state.depthFrame.width, state.depthFrame.height);
+  } else {
+    invalidateProbeMeasurements(false);
+  }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {

@@ -32,9 +32,9 @@ The quality evaluator and its fixtures are deterministic synthetic development e
 
 The recorded-RGBD preparer requires an already-downloaded TUM dataset and performs no downloads. Its outputs remain development-only, set no benchmark claim, and cannot substitute for reference-device promotion evidence. Exact commands, prediction format, quantile rule, bounds, and TUM CC BY 4.0 attribution obligations are in [Deterministic quality evaluation](docs/quality-evaluation.md#phase-1-recorded-tum-rgb-d-preparation).
 
-Remaining production work includes deterministic WebGPU fixtures and fake-provider integration, canonical metric calibration, full core/keyframe integration, reprojection and disocclusion, stabilization/refinement/compositing, adaptive integration, renderer adapters, and reference-device validation. Optical flow and segmentation remain off by default and may be adopted only through the validation evidence gates. Every numeric target in the specification remains an unvalidated hypothesis until the required reference-device evidence exists.
+Remaining production work includes deterministic WebGPU fixtures and fake-provider integration, full core/keyframe integration, reprojection and disocclusion, stabilization/refinement/compositing, adaptive integration, renderer adapters, and reference-device validation. The demo now includes explicit known-plane metric calibration, but its accuracy remains unvalidated. Optical flow and segmentation remain off by default and may be adopted only through the validation evidence gates. Every numeric target in the specification remains an unvalidated hypothesis until the required reference-device evidence exists.
 
-## Real relative-depth browser diagnostic
+## Real relative and calibrated-metric browser diagnostic
 
 The browser demo uses a normal RGB camera; it does not require WebXR or a hardware depth camera. It creates WebCodecs `VideoFrame` objects from the camera video, copies their RGBA pixels locally, and submits them asynchronously to `@web-ar-occlusion/depth-webgpu`. Rendering continues on `requestAnimationFrame` without awaiting inference.
 
@@ -48,7 +48,7 @@ The jsDelivr `+esm` entry is required for direct browser loading because it rewr
 
 It runs `onnx-community/depth-anything-v2-small` at revision `4472b7362082ad9968fee890ca0f1e5aca36b93d` using q4 weights on the WebGPU backend. The model is Apache-2.0 according to its [pinned model card](https://huggingface.co/onnx-community/depth-anything-v2-small/blob/4472b7362082ad9968fee890ca0f1e5aca36b93d/README.md).
 
-Each successful result is min/max-normalized into an `r32float` GPU texture representing relative inverse depth (near is 1). It has `scale: "relative"`, `unit: null`, and no confidence texture; the demo does not invent confidence or metric units. The same source-associated texture drives both the grayscale depth view and the relative comparison that hides parts of the virtual sphere. This is a diagnostic comparison in relative-depth space, not metric AR occlusion.
+Each successful result retains its raw near-is-larger inverse-depth signal and separately creates a min/max-normalized `r32float` diagnostic texture (near is 1). Relative mode has `scale: "relative"`, `unit: null`, and no confidence texture. After at least two source-associated known-plane anchors at distinct distances, metric mode deterministically fits `1/z = a·d + b`, emits approximate linear camera-Z in meters, and fails closed when that calibration is unavailable, invalid, mismatched, or stale. It does not invent confidence.
 
 Inference is asynchronous and latest-wins. A result is accepted only when its request generation, profile generation, provider identity, source frame ID, capture timestamp, representation, scale, and unit still match the current camera input. Before the first accepted result, after a profile change, when the page is hidden, when depth exceeds the active profile's maximum age, or on inference/provider/device failure, depth is invalidated. The renderer then binds a zero placeholder, disables occlusion, and shows a zero depth view; it never substitutes a stale or fabricated result. An inference failure also stops the camera and reports a failed state.
 
@@ -70,7 +70,7 @@ From the repository root, choose an unused port such as 5000:
 npm run demo -- --port 5000
 ```
 
-Open `http://127.0.0.1:5000/` and select **Start camera**. Camera permission is requested only after that click; model initialization follows camera startup. Use the profile buttons to select the inference cadence/resolution/maximum-age preset. Use **Occlusion**, **No occlusion**, and **Depth view** to compare the raw relative-depth behavior. The telemetry panel reports lifecycle, provider state, requested/active profile, display FPS, accepted inference count/rate, depth age/validity, camera size, and view mode. These counters are diagnostics, not validated performance measurements.
+Open `http://127.0.0.1:5000/` and select **Start camera**. Camera permission is requested only after that click; model initialization follows camera startup. Use the profile buttons to select the inference cadence/resolution/maximum-age preset. Use **Occlusion**, **No occlusion**, and **Depth view** to compare behavior. To inspect approximate distance, capture the same center plane at two or more distinct known distances, enable **Metric distance debug → Click probes**, then click up to six recognizable image points. Each label reports the validity-aware 5×5 ROI depth, an eight-observation median, and the recent observed range. A missing current metric sample is shown as unavailable rather than a stale or fabricated meter value. The telemetry panel reports lifecycle, provider state, calibration and probe state, requested/active profile, display FPS, accepted inference count/rate, depth age/validity, camera size, and view mode. These values are diagnostics, not validated performance measurements.
 
 Select **Stop camera** to release camera and GPU resources. Stop the server with `Ctrl-C`; it also shuts down on `SIGTERM`. Run the dependency-free demo checks with:
 
@@ -88,4 +88,4 @@ npm run demo:test
 
 ## Evidence limits
 
-The real-camera demo proves only that the implemented capture, pinned provider, GPU texture upload, lifecycle, and relative visualization paths can be exercised in a compatible browser. No reference-device accuracy, FPS, latency, thermal, visual-quality, or benchmark evidence exists yet. It does not complete the production engine, establish metric depth, validate the frozen acceptance hypotheses, or make the model/provider production-ready.
+The real-camera demo proves only that the implemented capture, pinned provider, source-associated calibration, metric probing, GPU texture upload, lifecycle, and visualization paths can be exercised in a compatible browser. No reference-device metric accuracy, FPS, latency, thermal, visual-quality, or benchmark evidence exists yet. The displayed distances are approximate calibrated estimates, not range-sensor measurements, and do not make the model/provider production-ready.

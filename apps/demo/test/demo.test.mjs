@@ -11,6 +11,7 @@ import {
   DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
   isDiagnosticSphereFragmentOccluded,
   mapSphereRelativeDepthForDiagnosticOcclusion,
+  sampleMetricDepthProbe,
   updateMetricCrossing,
   updateMetricCrossingMask
 } from '../occlusion.js';
@@ -118,7 +119,7 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(html, /Metric calibrated/);
   assert.match(html, /never calibrates normalized depth/);
   assert.match(html, /Camera pixels stay on this device/);
-  for (const id of ['modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis', 'exitHysteresis', 'depthMode', 'calibrationStatus', 'provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
+  for (const id of ['modeControls', 'anchorDistance', 'captureAnchor', 'clearCalibration', 'virtualZ', 'entryHysteresis', 'exitHysteresis', 'probeOverlay', 'probeControls', 'clearProbes', 'probeStatus', 'depthMode', 'calibrationStatus', 'provider', 'backend', 'model', 'profiles', 'fps', 'inference', 'depthAge', 'depthValid', 'cameraSize', 'viewMode', 'lifecycle']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
 
@@ -166,6 +167,11 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /application\.representation !== 'linear-z'/);
   assert.match(script, /values\.metricMode > \.5 && relativeDepthAt\(uv\) > \.5/);
   assert.match(script, /values\.metricMode < \.5 && relativeDepthAt\(uv\) > virtualRelativeDepth/);
+  assert.match(script, /sampleMetricDepthProbe\(/);
+  assert.match(script, /state\.previewFlipped \? 1 - probe\.x : probe\.x/);
+  assert.match(script, /metricLinearZ: application\.linearZ/);
+  assert.match(script, /metricSourceFrameId === state\.depthFrame\?\.sourceFrameId/);
+  assert.match(style, /\.probe-label/);
   assert.match(script, /const diagnosticRelativeDepthHeadroom: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM\}/);
   assert.match(script, /const diagnosticRelativeDepthCeiling: f32 = \$\{DIAGNOSTIC_RELATIVE_DEPTH_CEILING\}/);
   assert.match(script, /mix\(\s*diagnosticRelativeDepthHeadroom,\s*diagnosticRelativeDepthCeiling,/);
@@ -233,4 +239,15 @@ test('metric crossing mask preserves per-pixel temporal state and fails closed',
   const retained = updateMetricCrossingMask(entered, new Float32Array([1.55, 1, 1]), new Uint8Array([1, 1, 0]), 1.5, 0.05, 0.1);
   assert.deepEqual([...retained], [255, 255, 0]);
   assert.deepEqual([...updateMetricCrossingMask(retained, new Float32Array([2, 2, 2]), new Uint8Array([0, 0, 0]), 1.5, 0.05, 0.1)], [0, 0, 0]);
+});
+
+test('metric distance probes use a validity-aware ROI median and fail closed', () => {
+  const linearZ = new Float32Array([1, 9, 3, 8, 5, 2, 7, 4, 6]);
+  const validity = new Uint8Array(9).fill(1);
+  const center = sampleMetricDepthProbe(linearZ, validity, 3, 3, 0.5, 0.5, 1);
+  assert.deepEqual(center, { valid: true, centerX: 1, centerY: 1, sampleCount: 9, depthMeters: 5 });
+  assert.deepEqual(sampleMetricDepthProbe(linearZ, validity, 3, 3, 1, 1, 0), { valid: true, centerX: 2, centerY: 2, sampleCount: 1, depthMeters: 6 });
+  assert.deepEqual(sampleMetricDepthProbe(linearZ, new Uint8Array(9), 3, 3, 0.5, 0.5), { valid: false, centerX: 1, centerY: 1, sampleCount: 0 });
+  assert.throws(() => sampleMetricDepthProbe(linearZ, validity, 2, 2, 0.5, 0.5), /buffers/);
+  assert.throws(() => sampleMetricDepthProbe(linearZ, validity, 3, 3, -0.1, 0.5), /normalized/);
 });

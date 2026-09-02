@@ -49,3 +49,29 @@ export function updateMetricCrossingMask(previous, linearZ, validity, virtualZ, 
   }
   return output;
 }
+
+export function sampleMetricDepthProbe(linearZ, validity, width, height, normalizedX, normalizedY, radius = 2) {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || linearZ.length !== width * height || validity.length !== linearZ.length) {
+    throw new TypeError('metric probe buffers must match positive integer dimensions');
+  }
+  if (!Number.isFinite(normalizedX) || !Number.isFinite(normalizedY) || normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) {
+    throw new RangeError('metric probe coordinates must be normalized');
+  }
+  if (!Number.isSafeInteger(radius) || radius < 0) throw new RangeError('metric probe radius must be a non-negative integer');
+
+  const centerX = Math.min(width - 1, Math.floor(normalizedX * width));
+  const centerY = Math.min(height - 1, Math.floor(normalizedY * height));
+  const samples = [];
+  for (let y = Math.max(0, centerY - radius); y <= Math.min(height - 1, centerY + radius); y += 1) {
+    for (let x = Math.max(0, centerX - radius); x <= Math.min(width - 1, centerX + radius); x += 1) {
+      const index = y * width + x;
+      const depth = Number(linearZ[index]);
+      if (validity[index] === 1 && Number.isFinite(depth) && depth > 0) samples.push(depth);
+    }
+  }
+  if (samples.length === 0) return Object.freeze({ valid: false, centerX, centerY, sampleCount: 0 });
+  samples.sort((left, right) => left - right);
+  const middle = Math.floor(samples.length / 2);
+  const depthMeters = samples.length % 2 === 1 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
+  return Object.freeze({ valid: true, centerX, centerY, sampleCount: samples.length, depthMeters });
+}
