@@ -185,6 +185,7 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /runtime: createTransformersDepthRuntime\(\)/);
   assert.match(script, /native-metric-unavailable-manual-fallback-required/);
   assert.match(script, /capture two manual fallback anchors/);
+  assert.match(script, /native model meters pending/);
   assert.match(script, /move the camera slowly side to side/);
   assert.match(script, /new WebGPUMonocularDepthProvider/);
   assert.match(script, /await state\.provider\.initialize\(\)/);

@@ -295,7 +295,11 @@ function updateCalibrationControls() {
   metricButton.title = metricReady ? '' : 'Awaiting a source-associated native metric result or manual fallback.';
   elements.captureAnchor.disabled = nativeActive || state.lifecycle !== 'running' || state.provider?.state !== 'ready' || state.pendingAnchorDistance !== null;
   elements.depthMode.textContent = state.mode === 'metric'
-    ? (nativeActive ? 'native model meters' : 'manual calibration estimated meters')
+    ? (nativeActive
+      ? 'native model meters'
+      : state.providerKind === 'relative-manual-fallback'
+        ? 'manual calibration estimated meters'
+        : 'native model meters pending')
     : 'relative unitless';
   elements.calibrationStatus.textContent = nativeActive
     ? 'native metric active · manual fallback idle'
