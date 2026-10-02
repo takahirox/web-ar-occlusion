@@ -30,6 +30,8 @@ The contracts, architecture, defaults, control rules, validation protocol, and a
 - [Normative implementation plan](docs/implementation-plan.md)
 - [Deterministic quality evaluation](docs/quality-evaluation.md)
 
+For AI-assisted contributions, see the [development flow](docs/development-flow.md) and [review guidelines](docs/review-guidelines.md).
+
 The quality evaluator and its fixtures are deterministic synthetic development evidence. They are separate from the live-camera demo and are not camera-model accuracy, device-performance, or benchmark evidence.
 
 The recorded-RGBD preparer requires an already-downloaded TUM dataset and performs no downloads. Its outputs remain development-only, set no benchmark claim, and cannot substitute for reference-device promotion evidence. Exact commands, prediction format, quantile rule, bounds, and TUM CC BY 4.0 attribution obligations are in [Deterministic quality evaluation](docs/quality-evaluation.md#phase-1-recorded-tum-rgb-d-preparation).
