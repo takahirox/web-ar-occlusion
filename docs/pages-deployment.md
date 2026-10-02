@@ -18,8 +18,10 @@ fallback, and fail-closed diagnostics use the same code as the local demo.
 3. Confirm that both workflow jobs succeed. Open the URL reported by the
    `github-pages` environment and the deployment step. It should match the URL
    above, including the trailing slash.
-4. Complete the live-origin and physical-device checks below before claiming
-   Issue #7 is resolved. An artifact build alone does not meet those criteria.
+4. Complete the automated local and required live-origin checks below before
+   claiming Issue #7 is resolved. An artifact build alone does not establish a
+   public deployment. Physical-device testing is optional additional evidence
+   and does not block Issue completion.
 
 The workflow uses Node.js 24 and only Node's built-in tools; no dependency install
 is needed. `npm run demo:build` creates `dist/demo/` with the HTML, stylesheet,
@@ -62,12 +64,51 @@ These checks detect deployment path regressions. They do not verify permissions
 on the live HTTPS origin, remote dependency availability, or a physical mobile
 browser.
 
-## Verify the deployed origin
+## Required live-origin verification
 
-Use the top-level HTTPS URL directly, rather than an embedded preview. Test on
-at least one physical mobile device with working WebGPU and WebCodecs support.
-Mobile emulation or an automated fake camera cannot replace this required check:
-direct mobile-browser camera testing is the purpose of this deployment.
+These checks must be executable by an agent. Use the public HTTPS URL directly,
+rather than an embedded preview, and record actual results with the deployed
+commit SHA and successful deployment workflow run. A successful PR build with
+deployment skipped is insufficient.
+
+1. Fetch `https://takahirox.github.io/web-ar-occlusion/` and confirm an HTTP 200
+   HTML response over HTTPS. Open it in an automated browser and confirm
+   `window.isSecureContext === true`, rendered controls/styles, and no camera
+   request before **Start camera**.
+2. Follow the deployed HTML/CSS/module references and confirm all eight static
+   files respond successfully with the expected MIME types under
+   `/web-ar-occlusion/`. Compare their contents with `dist/demo/` built from the
+   deployed commit using `npm run demo:build`; inspect console/network errors
+   for missing files or broken module imports. The local graph tests above
+   describe the expected asset graph but do not verify the public origin.
+3. From the deployed browser origin, import the pinned ONNX Runtime Web and
+   Transformers.js bundles and verify their runtime and model dependency URLs
+   resolve without HTTP, MIME, or CORS errors. Verify the metric model's pinned
+   length and SHA-256 on download, and the fallback model's immutable revision.
+   A HEAD response only establishes reachability/length, not that a model
+   download or inference session succeeds. Report which checks actually ran.
+4. Inspect the deployed `main.js` and `index.html` for the **Start camera** click
+   handler, secure-context and `getUserMedia` guards, stop/retry behavior, and
+   WebGPU/`VideoFrame` diagnostics. Verify these match the tested source at the
+   deployed commit. Automated camera permissions or fake capture can exercise
+   this wiring; they do not establish a physical-device permission result.
+5. Inspect the deployed provider and core modules for preserved native metric
+   inference, passive refinement, metric debug, invalidation, and explicit
+   relative/manual fallback and failure diagnostics. Run the existing tests
+   at the deployed commit and compare the published modules to their build.
+   Inspect the deployed JavaScript and network requests to verify there is no
+   camera-frame upload/backend path; remote requests fetch runtime/model files.
+
+Record failures and unperformed checks as such. Physical-device permission,
+GPU session behavior, depth quality, performance, and broader compatibility
+are additional validation, not gates for Issue #7 completion.
+
+## Optional physical-device verification
+
+If physical testing is performed, use the top-level HTTPS URL on a device with
+working WebGPU and WebCodecs support. This checklist collects additional evidence
+and is not required for Issue completion. Mobile emulation or an automated fake
+camera must not be reported as a physical-device result.
 
 1. Record the deployed commit/workflow run, date, exact device, OS version, and
    browser version. Start with a fresh origin permission and browser cache if
@@ -120,25 +161,40 @@ Status at implementation time, 2026-10-02:
 - Local headless checks with missing `VideoFrame` and missing WebGPU produced
   the existing unsupported-capability messages, `Depth valid: false`, and no
   camera stream. These simulated failures are not physical-device results.
-- Live-origin camera permission, remote runtime/model session initialization,
-  and physical-mobile validation are **pending**. No tested mobile device or
-  browser is claimed.
+- Required live-origin deployment, asset/dependency, and camera/diagnostic wiring
+  checks are **pending**. Physical-mobile permission and runtime/model session
+  observations are optional and have not been performed. No tested mobile
+  device or browser is claimed.
 - This execution node permits a local checkpoint commit but prohibits pushing,
   opening a pull request, merging, or commenting. Publication of this new
   workflow therefore requires a later authorized repository step.
 
-After deployment, replace the pending record with actual evidence:
+After deployment, record the required agent-executable checks with actual evidence:
 
 | Field | Observed value |
 | --- | --- |
-| Date, commit, workflow run, demo URL | Pending |
-| Physical device, OS/version, browser/version | Pending |
-| HTTPS, static assets/modules, console/network errors | Pending |
-| Camera prompt, allowed/denied results, stop/restart | Pending |
-| ONNX Runtime/model requests and native session result | Pending |
-| Views, passive refinement, metric debug, invalidation | Pending |
-| Relative fallback, model failure, unsupported diagnostics | Pending |
-| Network inspection: frames stay local | Pending |
+| Date, deployed commit SHA, successful deployment workflow run, HTTPS URL | Pending |
+| Public HTTPS response and browser secure context | Pending |
+| Eight static assets/modules: status, MIME, paths, build comparison | Pending |
+| Browser runtime imports and runtime/model dependency responses, CORS, integrity | Pending |
+| User-initiated camera flow, secure-context guards, stop/retry wiring | Pending |
+| Native metric/refinement/debug, fallback/failure/unsupported wiring and tests | Pending |
+| Deployed source/network inspection: no frame upload/backend path | Pending |
 
-Issue #7 remains incomplete until the public deployment and required physical
-mobile observations are recorded.
+If physical-device testing is performed, record optional observations separately:
+
+| Field | Observed value |
+| --- | --- |
+| Date, commit, workflow run, demo URL | Not performed |
+| Physical device, OS/version, browser/version | Not performed |
+| HTTPS, static assets/modules, console/network errors | Not performed |
+| Camera prompt, allowed/denied results, stop/restart | Not performed |
+| ONNX Runtime/model requests and native session result | Not performed |
+| Views, passive refinement, metric debug, invalidation | Not performed |
+| Relative fallback, model failure, unsupported diagnostics | Not performed |
+| Network inspection: frames stay local | Not performed |
+
+Issue #7 remains incomplete until the public deployment and required automated/
+live-origin verification are recorded. Physical-mobile evidence is optional and
+does not block completion; device-specific performance, depth quality, and broader
+compatibility validation should be tracked separately.
