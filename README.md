@@ -1,5 +1,11 @@
 # Web AR Occlusion
 
+**Browser demo:** [Open the HTTPS demo](https://takahirox.github.io/web-ar-occlusion/).
+Publication requires enabling GitHub Pages and deploying the workflow on `main`;
+live verification is pending post-merge follow-up, not a gate for Issue #7 or PR
+review completion. Physical-mobile testing is optional.
+See [deployment and verification](docs/pages-deployment.md).
+
 Issue #3's dependency-free raw inverse-depth calibration design, fail-closed metric contract, multi-threshold evaluation, and limitations are documented in [docs/issue-3-approach-b.md](docs/issue-3-approach-b.md).
 
 This repository contains the final MVP specification and an in-progress WebGPU-based web AR occlusion engine. It includes an experimental real monocular-depth browser diagnostic, but it does not contain benchmark or reference-device results.
@@ -69,10 +75,13 @@ Inference is asynchronous and latest-wins. A result is accepted only when its re
 - A secure camera context and camera permission. Loopback `http://127.0.0.1` is a trustworthy context; use HTTPS when serving another device.
 - Network access on first use to jsDelivr and Hugging Face.
 - A Node.js release that provides `node:module`'s `stripTypeScriptTypes`, which the local server uses to serve the TypeScript provider as browser JavaScript.
+  Node.js 24 is used for local development and the static Pages build; opening the hosted demo requires no Node.js installation.
 
 First use downloads the pinned ONNX Runtime Web module from jsDelivr and the pinned metric model from Hugging Face. If native initialization fails and manual fallback is used, the browser also downloads pinned Transformers.js and its relative model. Subsequent reuse depends on browser cache state. Camera pixels remain on the device and are not uploaded.
 
 ### Launch and controls
+
+After publication, open the [HTTPS browser demo](https://takahirox.github.io/web-ar-occlusion/) directly on a supported desktop or mobile browser, then select **Start camera**. The static build uses the same providers and controls as the local server. [Deployment instructions and verification records](docs/pages-deployment.md) describe code/configuration review and local/automated checks for Issue #7 completion, post-merge live verification, and optional physical-device testing.
 
 From the repository root, choose an unused port such as 5000:
 

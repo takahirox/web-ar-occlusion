@@ -175,7 +175,7 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
     assert.match(html, new RegExp(`id="${id}"`));
   }
 
-  assert.match(script, /from '\/depth-webgpu\.js'/);
+  assert.match(script, /from '\.\/depth-webgpu\.js'/);
   assert.match(script, /METRIC_DEPTH_MODEL_ID/);
   assert.match(script, /METRIC_DEPTH_MODEL_REVISION/);
   assert.match(script, /ONNX_RUNTIME_WEB_VERSION/);
@@ -209,9 +209,9 @@ test('UI states explicit consent, aligned horizontal correction, real relative d
   assert.match(script, /age <= profiles\[state\.active\]\.maxDepthAgeMs/);
 
   assert.match(script, /from '\.\/occlusion\.js'/);
-  assert.match(script, /from '\/metric-calibration\.js'/);
-  assert.match(script, /from '\/metric-distance-state\.js'/);
-  assert.match(script, /from '\/metric-scale-shift-refiner\.js'/);
+  assert.match(script, /from '\.\/metric-calibration\.js'/);
+  assert.match(script, /from '\.\/metric-distance-state\.js'/);
+  assert.match(script, /from '\.\/metric-scale-shift-refiner\.js'/);
   assert.match(script, /createMetricScaleShiftRefinerState\(\)/);
   assert.match(script, /refineMetricScaleShift\(state\.metricRefinerState/);
   assert.match(script, /sourceId: state\.sourceId/);

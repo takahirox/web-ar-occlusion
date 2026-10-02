@@ -8,21 +8,21 @@ import {
   TRANSFORMERS_JS_VERSION,
   createTransformersDepthRuntime,
   WebGPUMonocularDepthProvider
-} from '/depth-webgpu.js';
+} from './depth-webgpu.js';
 import {
   applyKnownPlaneCalibration,
   captureKnownPlaneAnchor,
   fitKnownPlaneCalibration
-} from '/metric-calibration.js';
+} from './metric-calibration.js';
 import {
   createMetricDistanceState,
   reduceMetricDistanceState
-} from '/metric-distance-state.js';
+} from './metric-distance-state.js';
 import {
   createMetricScaleShiftRefinerState,
   refineMetricScaleShift,
   resetMetricScaleShiftRefinerState
-} from '/metric-scale-shift-refiner.js';
+} from './metric-scale-shift-refiner.js';
 import {
   DIAGNOSTIC_RELATIVE_DEPTH_CEILING,
   DIAGNOSTIC_RELATIVE_DEPTH_HEADROOM,
