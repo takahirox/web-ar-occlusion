@@ -49,12 +49,23 @@ Also verify the ordinary quality of the change:
 
 For product changes, check required evidence against the [validation protocol](validation.md); synthetic checks do not replace required reference-device evidence. Never treat unperformed checks as passed.
 
+## Check Pre-Merge Acceptance and Post-Merge Verification
+
+Follow the [development flow](development-flow.md#1-start-with-an-issue) and [Issue template](../.github/ISSUE_TEMPLATE/issue.md) when reviewing acceptance criteria. Mandatory pre-merge criteria must be achievable and verifiable before merge. Checks possible only after merge must not be prerequisites for pre-merge PR approval.
+
+For a merge-triggered deployment, require the deployment and verification implementation, code/configuration review, a validated local build, and applicable automated tests before approval. Verify successful publication and the newly published site against the merged commit after merge, using the [Pages verification procedure](pages-deployment.md#post-merge-live-origin-verification). Requiring that deployment to pass before approval would prevent the merge that triggers it.
+
+Confirm required post-merge checks are recorded separately with their expected results and evidence destination, and reported as **pending** until performed. Pending merge-dependent verification does not represent missing implementation and does not block approval when all pre-merge acceptance criteria are met. It remains required follow-up; local builds, approval, and merge do not prove publication or successful post-merge verification.
+
+This distinction does not excuse unimplemented requirements, waive applicable pre-merge tests, or allow checks that can run before merge to be deferred merely for convenience. Preserve the validation protocol's required evidence and report actual results, missing checks, and failures accurately.
+
 ## Review Outcome
 
 A Pull Request is ready to merge when:
 
 - it fully addresses the Issue it claims to resolve
 - it does not introduce unjustified scope or complexity
-- the implementation is correct and appropriately validated
+- the implementation is correct and all mandatory pre-merge acceptance criteria are met
+- required post-merge verification is recorded separately as pending until performed
 
 If any of these conditions are not met, request changes and review again after revision.
