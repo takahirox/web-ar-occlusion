@@ -51,3 +51,14 @@ jobs:
       - name: Deploy demo
         id: deployment
         uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify published HTTPS assets against this commit
+        env:
+          PAGES_VERIFY_ATTEMPTS: '12'
+          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          npm run demo:build
+          npm run demo:verify-pages -- "$PAGES_URL"

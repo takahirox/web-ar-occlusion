@@ -17,7 +17,11 @@ fallback, and fail-closed diagnostics use the same code as the local demo.
    Pull requests run the same checks and build without deploying.
 3. Confirm that both workflow jobs succeed. Open the URL reported by the
    `github-pages` environment and the deployment step. It should match the URL
-   above, including the trailing slash.
+   above, including the trailing slash. The deploy job rebuilds the same commit
+   and checks all eight live files over HTTPS against that build, including MIME
+   types and SHA-256. Its JSON log records the commit and workflow run URL. It
+   retries at most 12 times, five seconds apart, for Pages/CDN propagation;
+   missing, stale, or incorrectly served files fail the job.
 4. Complete the automated local and required live-origin checks below before
    claiming Issue #7 is resolved. An artifact build alone does not establish a
    public deployment. Physical-device testing is optional additional evidence
@@ -81,6 +85,15 @@ deployment skipped is insufficient.
    deployed commit using `npm run demo:build`; inspect console/network errors
    for missing files or broken module imports. The local graph tests above
    describe the expected asset graph but do not verify the public origin.
+   To repeat the live asset comparison from a checkout of the deployed commit:
+
+   ```sh
+   npm run demo:build
+   GITHUB_SHA="$(git rev-parse HEAD)" npm run demo:verify-pages
+   ```
+
+   This command makes one attempt by default. Its success establishes only the
+   HTTPS asset/MIME/build comparison; perform the browser checks separately.
 3. From the deployed browser origin, import the pinned ONNX Runtime Web and
    Transformers.js bundles and verify their runtime and model dependency URLs
    resolve without HTTP, MIME, or CORS errors. Verify the metric model's pinned
@@ -143,31 +156,45 @@ test establishes neither performance nor depth accuracy.
 
 ## Verification record
 
-Status at implementation time, 2026-10-02:
+Status after the review fixes, 2026-10-02 (GitHub state checked at approximately
+10:53 UTC):
 
-- GitHub Issue #7 was read from the repository, including its comments (none).
-- Read-only GitHub checks report `has_pages: false`; the Pages API and public
-  demo URL return HTTP 404. No deployment of this checkpoint has occurred.
-- Local Node.js 24.12.0 validation passed: `npm run check`, 118 core/provider
-  tests (`npm test`), 14 demo tests including the two deployment tests
-  (`npm run demo:test`), static build, and the standalone deployment check.
-  Workflow YAML parsed successfully and `git diff --check` passed.
-- A local desktop headless Chrome 154.0.0.0 smoke check loaded all eight static
-  files from the loopback `/web-ar-occlusion/` path with the camera off. Real
-  cross-origin imports of the pinned ONNX Runtime and Transformers bundles
-  succeeded; a browser HEAD request for the metric model returned HTTP 200 and
-  the pinned 98,941,181-byte length. The model was not downloaded for inference,
-  and this does not establish that an ONNX session initializes on a mobile GPU.
-- Local headless checks with missing `VideoFrame` and missing WebGPU produced
-  the existing unsupported-capability messages, `Depth valid: false`, and no
-  camera stream. These simulated failures are not physical-device results.
-- Required live-origin deployment, asset/dependency, and camera/diagnostic wiring
-  checks are **pending**. Physical-mobile permission and runtime/model session
-  observations are optional and have not been performed. No tested mobile
-  device or browser is claimed.
-- This execution node permits a local checkpoint commit but prohibits pushing,
-  opening a pull request, merging, or commenting. Publication of this new
-  workflow therefore requires a later authorized repository step.
+- Enabled Pages using `POST /repos/takahirox/web-ar-occlusion/pages` with
+  `build_type: workflow`. The successful response and subsequent read-only
+  checks report `has_pages: true`, `build_type: workflow`, `https_enforced: true`,
+  and `html_url: https://takahirox.github.io/web-ar-occlusion/`. The generated
+  `github-pages` environment permits deployments from `main`.
+- The public URL still returns **HTTP 404**. Running `npm run demo:verify-pages`
+  against the public origin failed with that response, as intended. Enabling
+  Pages did not publish the demo; no deployed commit SHA is available.
+- PR #8's existing head is `c51849eeac2ec45cedc46c6147c33dc7b2c5884f`.
+  [Workflow run 36997326751](https://github.com/takahirox/web-ar-occlusion/actions/runs/36997326751)
+  has a successful `build` job and a **skipped** `deploy` job. The repository has
+  zero workflow artifacts. The workflow file is absent from remote `main`
+  (the contents API returns 404), so there is no main-branch workflow/artifact
+  available to dispatch/deploy from this node.
+- Local Node.js 24.12.0 validation passed: syntax checks, 118 core/provider tests,
+  18 demo tests including live-verifier failure cases, the static build, and
+  `demo:check-build`. Workflow YAML parses and `git diff --check` passes.
+  Verifier tests use simulated HTTP responses; they are not live-origin evidence.
+- This checkpoint adds a post-deployment check that compares every public static
+  asset's status, MIME, and SHA-256 with the deploying commit's rebuilt artifact.
+  Successful verification logs will identify the deployed commit and run.
+- Publication remains blocked by this node's explicit **do not push or merge**
+  instruction. A later authorized publication step must make the workflow
+  available on `main` and run it. Then record the successful deploy run/SHA and
+  perform the browser checks below. The Pages deployment API also requires a
+  repository artifact and a GitHub Actions OIDC token; repository admin access
+  alone does not supply these prerequisites.
+- Required live-origin browser secure-context, runtime/model downloads and
+  integrity, camera wiring, diagnostic/fallback, and network/source inspection
+  remain **unperformed** because the demo is not deployed. No physical-device
+  permission or inference result is claimed. The review findings remain open
+  until actual publication and verification succeed.
+
+References:
+[Pages site/deployment API prerequisites](https://docs.github.com/en/rest/pages/pages)
+and [manual workflow dispatch requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
 After deployment, record the required agent-executable checks with actual evidence:
 
