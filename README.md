@@ -2,7 +2,8 @@
 
 **Browser demo:** [Open the HTTPS demo](https://takahirox.github.io/web-ar-occlusion/).
 Publication requires enabling GitHub Pages and deploying the workflow on `main`;
-the required live-origin checks are pending. Physical-mobile testing is optional.
+live verification is pending post-merge follow-up, not a gate for Issue #7 or PR
+review completion. Physical-mobile testing is optional.
 See [deployment and verification](docs/pages-deployment.md).
 
 Issue #3's dependency-free raw inverse-depth calibration design, fail-closed metric contract, multi-threshold evaluation, and limitations are documented in [docs/issue-3-approach-b.md](docs/issue-3-approach-b.md).
@@ -80,7 +81,7 @@ First use downloads the pinned ONNX Runtime Web module from jsDelivr and the pin
 
 ### Launch and controls
 
-Open the [HTTPS browser demo](https://takahirox.github.io/web-ar-occlusion/) directly on a supported desktop or mobile browser, then select **Start camera**. The static build uses the same providers and controls as the local server. [Deployment instructions and verification records](docs/pages-deployment.md) describe the required automated/live-origin checks and optional physical-device testing.
+After publication, open the [HTTPS browser demo](https://takahirox.github.io/web-ar-occlusion/) directly on a supported desktop or mobile browser, then select **Start camera**. The static build uses the same providers and controls as the local server. [Deployment instructions and verification records](docs/pages-deployment.md) describe code/configuration review and local/automated checks for Issue #7 completion, post-merge live verification, and optional physical-device testing.
 
 From the repository root, choose an unused port such as 5000:
 

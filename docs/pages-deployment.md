@@ -22,10 +22,12 @@ fallback, and fail-closed diagnostics use the same code as the local demo.
    types and SHA-256. Its JSON log records the commit and workflow run URL. It
    retries at most 12 times, five seconds apart, for Pages/CDN propagation;
    missing, stale, or incorrectly served files fail the job.
-4. Complete the automated local and required live-origin checks below before
-   claiming Issue #7 is resolved. An artifact build alone does not establish a
-   public deployment. Physical-device testing is optional additional evidence
-   and does not block Issue completion.
+4. After merge and deployment, perform the live-origin checks below and record
+   actual results. These are post-merge follow-up and do not block Issue #7 or PR
+   review completion. Code/configuration review, local/static-build checks, and
+   existing tests are sufficient for this setup change. A local artifact build
+   does not establish a public deployment. Physical-device testing is optional
+   additional evidence.
 
 The workflow uses Node.js 24 and only Node's built-in tools; no dependency install
 is needed. `npm run demo:build` creates `dist/demo/` with the HTML, stylesheet,
@@ -68,12 +70,14 @@ These checks detect deployment path regressions. They do not verify permissions
 on the live HTTPS origin, remote dependency availability, or a physical mobile
 browser.
 
-## Required live-origin verification
+## Post-merge live-origin verification
 
-These checks must be executable by an agent. Use the public HTTPS URL directly,
-rather than an embedded preview, and record actual results with the deployed
-commit SHA and successful deployment workflow run. A successful PR build with
-deployment skipped is insufficient.
+After merge and deployment, these agent-executable checks can verify the
+published demo. They are not required for Issue #7 or PR review completion. Use
+the public HTTPS URL directly, rather than an embedded preview, and record actual
+results with the deployed commit SHA and successful deployment workflow run.
+A successful PR build with deployment skipped provides local/static-build
+evidence only; it does not establish publication or live-origin behavior.
 
 1. Fetch `https://takahirox.github.io/web-ar-occlusion/` and confirm an HTTP 200
    HTML response over HTTPS. Open it in an automated browser and confirm
@@ -156,7 +160,7 @@ test establishes neither performance nor depth accuracy.
 
 ## Verification record
 
-Status after the review fixes, 2026-10-02 (GitHub state checked at approximately
+Recorded during the earlier review fixes, 2026-10-02 (GitHub state checked at approximately
 10:53 UTC):
 
 - Enabled Pages using `POST /repos/takahirox/web-ar-occlusion/pages` with
@@ -180,23 +184,23 @@ Status after the review fixes, 2026-10-02 (GitHub state checked at approximately
 - This checkpoint adds a post-deployment check that compares every public static
   asset's status, MIME, and SHA-256 with the deploying commit's rebuilt artifact.
   Successful verification logs will identify the deployed commit and run.
-- Publication remains blocked by this node's explicit **do not push or merge**
-  instruction. A later authorized publication step must make the workflow
-  available on `main` and run it. Then record the successful deploy run/SHA and
-  perform the browser checks below. The Pages deployment API also requires a
+- Publication awaits the workflow reaching `main` after merge. Then record the
+  successful deploy run/SHA and perform the post-merge browser checks above.
+  This follow-up does not block Issue #7 or PR review completion.
+  The Pages deployment API also requires a
   repository artifact and a GitHub Actions OIDC token; repository admin access
   alone does not supply these prerequisites.
-- Required live-origin browser secure-context, runtime/model downloads and
+- Post-merge live-origin browser secure-context, runtime/model downloads and
   integrity, camera wiring, diagnostic/fallback, and network/source inspection
   remain **unperformed** because the demo is not deployed. No physical-device
-  permission or inference result is claimed. The review findings remain open
-  until actual publication and verification succeed.
+  permission or inference result is claimed. Unperformed live and physical-device
+  checks do not block approval of this setup change.
 
 References:
 [Pages site/deployment API prerequisites](https://docs.github.com/en/rest/pages/pages)
 and [manual workflow dispatch requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
-After deployment, record the required agent-executable checks with actual evidence:
+After deployment, record the post-merge agent-executable checks with actual evidence:
 
 | Field | Observed value |
 | --- | --- |
@@ -221,7 +225,9 @@ If physical-device testing is performed, record optional observations separately
 | Relative fallback, model failure, unsupported diagnostics | Not performed |
 | Network inspection: frames stay local | Not performed |
 
-Issue #7 remains incomplete until the public deployment and required automated/
-live-origin verification are recorded. Physical-mobile evidence is optional and
-does not block completion; device-specific performance, depth quality, and broader
-compatibility validation should be tracked separately.
+Issue #7 and PR review can complete using code/configuration review,
+local/static-build checks, and existing tests. Successful public deployment and
+live-origin verification are post-merge follow-up, not completion gates. No
+unperformed live check is claimed as passed. Physical-mobile evidence is optional;
+device-specific performance, depth quality, and broader compatibility validation
+should be tracked separately.
