@@ -160,6 +160,10 @@ test establishes neither performance nor depth accuracy.
 
 ## Verification record
 
+### Initial publication setup (2026-10-02)
+
+This historical record predates the successful publication recorded below.
+
 Recorded during the earlier review fixes, 2026-10-02 (GitHub state checked at approximately
 10:53 UTC):
 
@@ -200,13 +204,56 @@ References:
 [Pages site/deployment API prerequisites](https://docs.github.com/en/rest/pages/pages)
 and [manual workflow dispatch requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
-After deployment, record the post-merge agent-executable checks with actual evidence:
+### Issue #11 recovery (2026-10-04)
+
+The reported 404 is resolved. The evidence is consistent with an unpublished
+artifact caused by a stalled deployment, rather than an incorrect public URL or
+static build. Run `37014975396` built and uploaded the Pages artifact, but its
+deploy job had no assigned runner or executed steps. The exact cause of runner
+nonassignment remains unknown. With `cancel-in-progress: false`, the subsequent
+run could wait behind it; no workflow change is justified by the available evidence.
+
+The repository owner [reported cancelling the stalled and pending runs](https://github.com/takahirox/web-ar-occlusion/issues/11#issuecomment-5981002436)
+(`37014975396` and `37017808919`) and manually dispatching a fresh run on `main`.
+Read-only GitHub checks confirm that
+[run 37208880940](https://github.com/takahirox/web-ar-occlusion/actions/runs/37208880940)
+completed successfully at `2026-10-04T14:20:57Z` for commit
+`4110f8ed3efdf660438649242e08f18048267262`, including build, artifact upload,
+deployment, and published HTTPS asset verification. No deployment approval was
+pending, according to the owner's report.
+
+Independent verification from this checkout, whose tracked files matched that
+deployed commit before this documentation update:
+
+- At `2026-10-04T14:27:06.541Z`, a direct HTTP GET of
+  `https://takahirox.github.io/web-ar-occlusion/` returned **200**, without a
+  redirect, with `text/html; charset=utf-8` and title
+  **Native metric WebGPU occlusion**.
+- `npm run demo:build` followed by
+  `GITHUB_SHA=4110f8ed3efdf660438649242e08f18048267262 npm run demo:verify-pages -- https://takahirox.github.io/web-ar-occlusion/`
+  passed at `2026-10-04T14:27:19.964Z`. All eight public files returned HTTP 200,
+  had the expected MIME types, and matched the local build's SHA-256 hashes.
+- Node.js 24.12.0: `npm run check`, `npm test` (118 tests), `npm run demo:test`
+  (18 tests), `npm run demo:build`, and `npm run demo:check-build` (6 tests)
+  passed. The existing graph regression tests cover both `/` and
+  `/web-ar-occlusion/`; the live-verifier tests cover missing, stale, and
+  incorrectly served assets. Workflow YAML parsed successfully, with the Pages
+  artifact path `dist/demo` and deploy dependency on the build job confirmed.
+
+Retain the existing implementation, workflow, and documented public URL. The
+operational recovery has already been performed; this documentation change does
+not require another deployment to establish Issue #11's availability outcome.
+Browser secure-context, runtime/model, camera-function, and physical-device checks
+were not performed for this page-availability fix. Their pending status below
+does not imply that the demo still returns 404.
+
+Current post-merge verification evidence:
 
 | Field | Observed value |
 | --- | --- |
-| Date, deployed commit SHA, successful deployment workflow run, HTTPS URL | Pending |
-| Public HTTPS response and browser secure context | Pending |
-| Eight static assets/modules: status, MIME, paths, build comparison | Pending |
+| Date, deployed commit SHA, successful deployment workflow run, HTTPS URL | 2026-10-04; `4110f8ed3efdf660438649242e08f18048267262`; [run 37208880940](https://github.com/takahirox/web-ar-occlusion/actions/runs/37208880940); https://takahirox.github.io/web-ar-occlusion/ |
+| Public HTTPS response and browser secure context | HTTP 200 without redirect at `2026-10-04T14:27:06.541Z`; browser secure-context check pending |
+| Eight static assets/modules: status, MIME, paths, build comparison | Passed at `2026-10-04T14:27:19.964Z`: HTTP 200, expected MIME types and SHA-256 matching the deployed commit's build under `/web-ar-occlusion/` |
 | Browser runtime imports and runtime/model dependency responses, CORS, integrity | Pending |
 | User-initiated camera flow, secure-context guards, stop/retry wiring | Pending |
 | Native metric/refinement/debug, fallback/failure/unsupported wiring and tests | Pending |

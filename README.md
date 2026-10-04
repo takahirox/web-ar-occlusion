@@ -1,9 +1,9 @@
 # Web AR Occlusion
 
 **Browser demo:** [Open the HTTPS demo](https://takahirox.github.io/web-ar-occlusion/).
-Publication requires enabling GitHub Pages and deploying the workflow on `main`;
-live verification is pending post-merge follow-up, not a gate for Issue #7 or PR
-review completion. Physical-mobile testing is optional.
+Publication and HTTPS static-asset verification passed on 2026-10-04 after the
+stalled deployment was restarted (Issue #11). Browser/runtime checks remain
+pending; physical-mobile testing is optional.
 See [deployment and verification](docs/pages-deployment.md).
 
 Issue #3's dependency-free raw inverse-depth calibration design, fail-closed metric contract, multi-threshold evaluation, and limitations are documented in [docs/issue-3-approach-b.md](docs/issue-3-approach-b.md).
