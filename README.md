@@ -44,6 +44,16 @@ The recorded-RGBD preparer requires an already-downloaded TUM dataset and perfor
 
 Remaining production work includes full core/keyframe integration, pose-aware reprojection and disocclusion, segmentation, adaptive integration, renderer adapters, and reference-device validation. The demo now uses native metric inference by default and retains explicit known-plane calibration only as a fallback, but its absolute accuracy remains unvalidated. Every numeric target in the specification remains an unvalidated hypothesis until the required reference-device evidence exists.
 
+## UI/UX
+
+Apply these principles to the browser diagnostic's controls, status messages and overlays, as well as command-line tools, messages and examples:
+
+1. **Keep it simple.** Show only necessary information and actions; avoid unnecessary UI elements.
+2. **Show, don't tell.** Prefer layout, spacing and visual hierarchy over explanatory labels or prose to communicate structure.
+3. **Intuitive and predictable.** Keep appearance and behavior consistent with user expectations; don't interrupt the user's work.
+
+Preserve necessary control labels, accessible names, error messages and information needed to use the interface. Simplification must preserve meaningful consent (including camera permission), destructive-action safeguards and necessary warnings, including depth-estimate limitations.
+
 ## Native metric and relative-fallback browser diagnostic
 
 The browser demo uses a normal RGB camera; it does not require WebXR or a hardware depth camera. It creates WebCodecs `VideoFrame` objects from the camera video, copies their RGBA pixels locally, and submits them asynchronously to `@web-ar-occlusion/depth-webgpu`. Rendering continues on `requestAnimationFrame` without awaiting inference.
