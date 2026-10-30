@@ -47,6 +47,8 @@ Also verify the ordinary quality of the change:
 - validation is sufficient for the change
 - documentation is updated when the change affects documented behavior
 
+Review applicable interface changes against the [UI/UX principles](../README.md#uiux).
+
 For product changes, check required evidence against the [validation protocol](validation.md); synthetic checks do not replace required reference-device evidence. Never treat unperformed checks as passed.
 
 ## Check Pre-Merge Acceptance and Post-Merge Verification
