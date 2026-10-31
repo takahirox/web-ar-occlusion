@@ -37,6 +37,7 @@ The contracts, architecture, defaults, control rules, validation protocol, and a
 - [Deterministic quality evaluation](docs/quality-evaluation.md)
 
 For AI-assisted contributions, see the [development flow](docs/development-flow.md) and [review guidelines](docs/review-guidelines.md).
+Choose validation using the [test and CI principles](docs/development-flow.md#test-and-ci-principles).
 
 The quality evaluator and its fixtures are deterministic synthetic development evidence. They are separate from the live-camera demo and are not camera-model accuracy, device-performance, or benchmark evidence.
 
