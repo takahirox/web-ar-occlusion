@@ -49,6 +49,10 @@ Also verify the ordinary quality of the change:
 
 Review applicable interface changes against the [UI/UX principles](../README.md#uiux).
 
+Apply the [test and CI principles](development-flow.md#test-and-ci-principles): consider the additional defects covered, overlap with existing coverage, and execution/maintenance cost of new or expanded tests. Ask:
+
+> Does this change provide sufficient confidence with the lightest appropriate validation, without redundant execution?
+
 For product changes, check required evidence against the [validation protocol](validation.md); synthetic checks do not replace required reference-device evidence. Never treat unperformed checks as passed.
 
 ## Check Pre-Merge Acceptance and Post-Merge Verification
