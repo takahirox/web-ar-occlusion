@@ -20,6 +20,8 @@ When human work is required, state why it is necessary and what result is expect
 
 Use the [Issue template](../.github/ISSUE_TEMPLATE/issue.md) to separate **pre-merge acceptance criteria** from **required post-merge verification**. Mandatory pre-merge criteria must be achievable and verifiable before merge. Checks possible only after merge must not be prerequisites for pre-merge PR approval. Record required post-merge checks separately, including the expected result and where evidence will be recorded, and report them as **pending** until performed.
 
+Require post-merge verification only when the actual change needs it; otherwise state **none required**. Documentation/template edits need the Markdown checks below, without routine manual approval, physical-device runs, heavyweight model downloads, or deployment gates.
+
 For example, when merge triggers deployment, implement and review the deployment code/configuration, validate the local build, and run applicable automated tests before merge. After merge, verify successful publication and the newly published site against the merged commit, following the [Pages verification procedure](pages-deployment.md#post-merge-live-origin-verification). A successful local build does not establish publication. This timing distinction does not waive implementation requirements or applicable pre-merge tests.
 
 ## 2. Create a Pull Request for the Issue
@@ -39,9 +41,9 @@ Choose checks using the [test and CI principles](#test-and-ci-principles) below.
 
 Report pre-merge validation results and pending required post-merge verification separately in the Pull Request. Pending checks that depend on merge do not prevent approval when implementation and pre-merge acceptance are complete; they remain required follow-up and must not be reported as passed or as full verification of the outcome.
 
-A Pull Request should only claim to close an Issue when it fully addresses that Issue.
+A Pull Request should use the normal `Closes #N` reference when it fully implements the Issue and satisfies all applicable mandatory pre-merge acceptance criteria. Pending post-merge-only verification does not make that implementation partial. Preserve the reference through publication and review; removing it or keeping the source Issue open solely for post-merge verification makes ProjectWeave publication and review undo each other in a repeated Review → Fix → Publish → Review loop.
 
-If the Pull Request intentionally implements only part of the Issue, it should state that clearly and should not present the Issue as fully resolved.
+If the Pull Request intentionally implements only part of the Issue, state the remaining scope and do not use an automatic closing reference for the parent Issue. Missing implementation, mandatory pre-merge tests, required repository protections/reviews, and genuinely necessary pre-merge human acceptance remain blockers; post-merge follow-up cannot substitute for them.
 
 ### Test and CI principles
 
@@ -91,11 +93,15 @@ The Pull Request should be merged only when the reviewed change is an appropriat
 
 ## 5. Merge
 
-After review passes, merge the Pull Request.
+After review and all required pre-merge acceptance and protections pass, merge the Pull Request. When it fully implements the original Issue, close that Issue, normally through `Closes #N`. Do not keep it open solely for pending post-merge-only verification. Issue closure records implementation and pre-merge acceptance; it does not claim unperformed checks passed.
 
 ## 6. Perform Required Post-Merge Verification
 
-Once the merge-dependent deployment or other prerequisite completes, perform the recorded post-merge checks and update their evidence with actual results. Keep unperformed checks pending and report failures accurately; track any necessary follow-up work. PR approval or merge alone does not establish that these checks passed.
+Once the merge-dependent deployment or other prerequisite completes, perform the recorded required post-merge checks. Record actual results in the merged PR, closed Issue, or a linked validation report, including the checked revision, environment, checks performed, and supporting evidence. Report unperformed, pending, or environment-blocked checks explicitly, including the blocker. Approval, merge, and Issue closure do not establish that these checks passed; an unavailable test environment alone is not evidence of a product defect.
+
+If verification finds an actual defect, first check for an existing equivalent Issue. Use that Issue or create a new one with reproduction steps, affected revision, expected and actual behavior, and links to the original Issue and PR. Do not reopen the original Issue solely for post-merge follow-up.
+
+This lifecycle supersedes older instructions to keep an implemented Issue open solely until post-merge verification finishes. Preserve historical test outcomes and evidence, including failures and unperformed checks; do not rewrite them as successful results.
 
 The normal flow is therefore:
 
@@ -110,7 +116,7 @@ Review
   ↓
 Revision if needed
   ↓
-Merge
+Merge and close original Issue
   ↓
 Required post-merge verification (if any)
 ```
