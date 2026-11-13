@@ -20,7 +20,7 @@ Verify that the Pull Request addresses all parts of the Issue that it claims to 
 
 Do not approve a Pull Request as closing an Issue when important requirements remain unimplemented.
 
-If the change is intentionally partial, the Pull Request should say so and the Issue should remain open.
+If the change is intentionally partial, the Pull Request should state its remaining scope and omit an automatic closing reference for the parent Issue, which should remain open. Pending post-merge-only verification does not make an otherwise complete implementation partial.
 
 ## Check for Unnecessary Work
 
@@ -63,7 +63,11 @@ For a merge-triggered deployment, require the deployment and verification implem
 
 Confirm required post-merge checks are recorded separately with their expected results and evidence destination, and reported as **pending** until performed. Pending merge-dependent verification does not represent missing implementation and does not block approval when all pre-merge acceptance criteria are met. It remains required follow-up; local builds, approval, and merge do not prove publication or successful post-merge verification.
 
-This distinction does not excuse unimplemented requirements, waive applicable pre-merge tests, or allow checks that can run before merge to be deferred merely for convenience. Preserve the validation protocol's required evidence and report actual results, missing checks, and failures accurately.
+For a fully implemented Issue with all mandatory pre-merge acceptance satisfied, preserve `Closes #N`. Do not request its removal, keep the source Issue open, or withhold approval solely because post-merge-only verification is pending. ProjectWeave publication adds the closing reference; requiring its removal would cause a repeated Review → Fix → Publish → Review loop. Follow the [merge and closure lifecycle](development-flow.md#5-merge), then the [post-merge evidence and linked-defect procedure](development-flow.md#6-perform-required-post-merge-verification).
+
+Missing implementation, mandatory pre-merge tests, required protections/reviews, and genuinely necessary pre-merge human acceptance remain blockers. Do not defer checks that can run before merge merely for convenience. Preserve the validation protocol's required evidence and report actual results, missing checks, and failures accurately.
+
+Require post-merge checks only when the change needs them. Documentation/template edits require Markdown structure, links/anchors, consistency, and `git diff --check`; do not add routine manual approval, physical-device, heavyweight-model-download, or deployment gates solely for these edits.
 
 ## Review Outcome
 
